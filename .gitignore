@@ -5,3 +5,4 @@
 .Rprofile
 
 _site
+*_cache

@@ -20,7 +20,11 @@ knitr::opts_chunk$set(
 using Distributed, Pkg
 Pkg.activate(".julia"); using cov19sim
 addprocs(Sys.CPU_THREADS)
-@everywhere using Pkg; Pkg.activate(".julia"); using cov19sim
+@everywhere begin 
+	using Pkg
+	Pkg.activate(".julia")
+	using cov19sim
+end
 ```
 
 
@@ -41,6 +45,7 @@ nuanced approach to reopening at least nurseries and primary schools.
 For all policies, we assume that a 100% sensitive and specific PCR test is
 available (e.g., via repeated PCR testing).
 
+
 ## Current Government Policy
 
 The current default policy (after reopening of schools) is to rely on symptomatic
@@ -54,6 +59,21 @@ negative individuals have to isolate on the day of the index event and the
 following day while PCR positive individuals have to isolate for a total of 
 14 days.
 
+
+## 'Test & Release' Approach
+
+Instead of sending an entire bubble into PCR testing and isolation based on 
+mere (not necessarily Covid-19 related) symptoms,
+a screening-test-based dynamic testing regime has been discussed.
+Here, upon reporting of symptoms, the index case is immediately isolated and 
+followed up with a PCR test but the bubble is not immediately co-isolated/PCR-tested.
+Instead, a less sensitive but quicker screening test is used on a daily basis
+(including the symptom onset day) for every member of the bubble.
+Only if a screening test is positive (or someone else develops symptoms)
+the person is isolated and followed up with a PCR test.
+Again assuming a turnaround of 2 days for the PCR test, the follow up period of
+a bubble is a minimum of two days (i.e., until the PCR test comes back negatively)
+or 7 days if the index PCR test is positive.
 
 
 

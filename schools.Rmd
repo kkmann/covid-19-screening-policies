@@ -21,9 +21,11 @@ import Pkg; Pkg.activate(".julia")
 using Distributed
 addprocs(Sys.CPU_THREADS)
 @everywhere begin
-	import Pkg; Pkg.activate(".julia")
+	import Pkg
+	Pkg.activate(".julia")
+	Pkg.instantiate()
 	using cov19sim
-end
+end # @everywhere
 ```
 
 
@@ -39,6 +41,8 @@ end
 # Results
 
 ```{julia, results="hide"}
+@everywhere begin 
+
 function f(i)
     school = ThreeLevelPopulation(policy_bubble = SymptomaticIsolation(14, true))
     infect!.(school.individuals[1])
@@ -46,7 +50,8 @@ function f(i)
     evaluate(school)
 end
 
-tbl_res = vcat(map(f, 1:50)...)
+end #@everywhere
+tbl_res = vcat(pmap(f, 1:50)...)
 ```
 
 ```{r}

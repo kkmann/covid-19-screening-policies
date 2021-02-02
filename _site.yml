@@ -3,6 +3,8 @@ navbar:
   left:
     - text: "Home"
       href: index.html
+    - text: "Disease Model"
+      href: disease_model.html
     - text: "Test & Release for Schools"
       href: schools.html
   right: 

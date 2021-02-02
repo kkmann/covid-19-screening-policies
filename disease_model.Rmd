@@ -1,0 +1,195 @@
+---
+title: "The Covid-19 Disease Model by Larremore et al."
+author: "Kevin Kunzmann"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: html_document
+bibliography: references.bib
+---
+
+```{r r-setup, include=FALSE}
+library(JuliaCall)
+library(tidyverse)
+
+knitr::opts_chunk$set(
+	echo = FALSE,
+	fig.width = 9,
+	fig.height = 9/1.61
+)
+
+set.seed(42)
+theme_set(
+	theme_bw() + 
+	theme(
+		legend.position = "top",
+		panel.grid.minor = element_blank(),
+		legend.title = element_blank()
+	)
+)
+```
+
+```{julia julia-setup, include=FALSE}
+using Pkg
+Pkg.activate(".julia")
+using cov19sim
+import Random.seed!
+seed!(42)
+```
+
+
+
+# Problem Statement
+
+This document briefly presents the disease and infection model for SARS-CoV-2
+presented in by Larremore and colleagues.
+The model is centered around and individual's viral load 
+(VL, measured in copies per milliliter $cp/ml$) trajectory over time.
+For original references justifying the choice of parameters, 
+please refer to the original publication [@larremore2020a].
+
+
+# Viral Load Model
+
+Each individual's VL trajectory is determined via a set of pivot points that
+are sampled from a distribution.
+The ordinate of the pivot points used in the Larremore-model are given on the 
+log-10 VL scale. 
+An individual's final log-10 VL-trajectory is determined by linear interpolation 
+of the pivot points.
+
+The pivot points are:
+
+1. **Start of fast exponential growth phase:** $(t_1, 1e3)$ 
+2. **Peak log-10 VL:** $(t_2, lVL_{peak})$
+3. **Clearance point (point of non-infectiousness):** $(t_3, 1e6)$
+
+In the Larremore-model, $t_1$ is sampled uniformly between $2.5$ and $3.5$ days
+after the infection $t_0=0$.
+The height of first pivot ($1e3$) is not explicitly justified in 
+[@larremore2020a].
+
+The second pivot points delay $t_2 - t_1 = 0.5 + \min(3, X)$ where 
+$X\sim \operatorname{Gamma}(1.5)$ (again not explicitly justified).
+Peak log-10 VL, $lVL_{peak}$, is sampled uniformly between $[7, 11]$.
+
+The timing of the third pivot, the clearance point of non-infectiousness, 
+is sampled conditional on whether or not an individual is symptomatic to
+introduce a correlation between being symptomatic and a prolonged VL clearance
+(the peak VL is assumed to be the same between symptomatic and asymptomatic 
+cases though).
+Log-10 VL at clearance is defined as $1e6$ in accordance with the literature 
+cited in [@larremore2020a].
+Whether or not an individual is symptomatic is sampled from an assumed fraction
+of symptomatic cases.
+For asymptomatic cases, the $t_3 - t_2\sim\operatorname{Unif}(4, 9)$. 
+For symptomatic cases, a symptom onset time with delay 
+$t_{symptoms}-t_2\sim \operatorname{Unif}(0, 3)$ 
+is sampled (determining when a cases becomes symptomatic) and the $t_3$ is
+delayed by that time.
+This implies that symptomatic cases have a slower clearance of their peak VL.
+
+Although not noted in [@larremore2020a] we set the initial log-10 VL to $0$ at $t=0$
+and extrapolate linearly after $t_3$ until the log-10 VL reaches 0 again.
+Outside of this interval, the log-10 VL is $-\infty$, i.e., VL is $0$.
+
+We then modify the above model slightly to fit it into a simulation framework
+with discrete daily time scale. 
+Firstly, we additionally sample a 'meeting time' $t_0\sim\operatorname{Unif}(8/24, 16/24)$
+and add it to $t_1$.
+Secondly, we determine the first day of an individual becoming symptomatic as the
+first day on which the individual was symptomatic before 07:30AM in the morning.
+All daily viral loads / symptom status are queried at 07:30 AM.
+
+
+# Infection Submodel
+
+The probability that an individual infects a susceptible other individual during
+an encounter is modeled as function of the individuals VL.
+We assume that individuals who already went though an infection are no longer
+susceptible (short term immunity).
+
+In [@larremore2020a] different functional forms for the relationship between VL
+and the probability to infect 
+[todo: not entirely clear whether they model the probability directly or 
+something else; inferred from plot]
+are considered but the main results refer to a model where the infectivity is 
+modeled as proportional to the excess log-10 VL over the infectivity threshold 
+of $1e6$.
+
+Confining this to the valid interval $[0,1]$ yields
+$$
+\operatorname{Pr}\big[\text{A infect B at $t$} \,|\, \text{B susceptible at $t$} \big] = max\Big(0, min\big(1, \gamma \cdot (\log_10\big(VL_A(t)\big) - 1e6)\big)\Big)
+$$
+where $\gamma$ is the infectivity constant and only free parameter of the 
+infection submodel.
+Within a population model, the infectivity can then be calibrated, e.g.,
+using the reproduction number 
+(see article 'Comparing Test and Isolation Policies for Schools under a Larremore et al. Disease Model').
+
+
+# Example Trajectories
+
+```{julia, results="hide"}
+dm = LarremoreModel(
+    0.75, # fraction symptomatic
+    3.0, 2.5, 3.5, # onset height and delay
+    7.0, 11.0, 3.0, 1.5, # peak
+    0.0, 3.0, # symptoms
+    6.0, 4.0, 9.0, # clearance
+    .25 # infectivity
+)
+
+# create 25 individuals
+inds = [Individual(dm, 0.01) for i in 1:25] # .01 chance of non-covid symptoms
+# infect them all
+infect!.(inds)
+# simulate some days forward
+steps!.(inds, 45)
+tbl_status = get_status_logs(inds)
+```
+
+```{r}
+tbl_status <- as_tibble(julia_eval("tbl_status"))
+```
+
+```{r, warning=FALSE, fig.height=7}
+tbl_status %>%
+	mutate(
+		symptomatic = factor(symptomatic, levels = c(FALSE, TRUE), labels = c("non-symptomatic", "symptomatic"))
+	) %>%
+	ggplot() +
+		aes(day, viral_load) +
+	 	geom_hline(yintercept = 1e6) +
+		geom_bar(aes(fill = symptomatic), stat = "identity", alpha = .66) +
+		scale_y_log10() +
+		ylab("viral load") +
+		facet_wrap(~uuid) +
+		theme(
+			strip.text = element_blank(),
+			strip.background = element_blank()
+		) + 
+		labs(
+			caption = "Random sample of VL trajectories with symptom status; black line indicates infectivity threshold."
+		)
+```
+
+```{r, warning=FALSE, fig.height=7}
+tbl_status %>%
+	mutate(
+		symptomatic = factor(symptomatic, levels = c(FALSE, TRUE), labels = c("non-symptomatic", "symptomatic"))
+	) %>%
+	ggplot() +
+		aes(day, infection_probability) +
+		geom_bar(aes(fill = symptomatic), stat = "identity", alpha = .66) +
+		ylab("infection probability") +
+		facet_wrap(~uuid) +
+		theme(
+			strip.text = element_blank(),
+			strip.background = element_blank()
+		) + 
+		labs(
+			caption = "Corresponding infection probabilities per risk-contact; with symptom status."
+		)
+```
+
+
+# References

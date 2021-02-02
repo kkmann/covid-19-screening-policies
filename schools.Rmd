@@ -34,7 +34,7 @@ addprocs(Sys.CPU_THREADS)
 @everywhere begin 
 	using Pkg
 	Pkg.activate(".julia")
-	using cov19sim
+	using cov19sim, DataFrames
 end
 ```
 
@@ -110,7 +110,65 @@ determine (again by random sampling) weather or not a transmission occurs.
 We do not model staff explicitly.
 
 We assume a daily meeting probability of $1/251$ on the school level,
-of $0.2$ on the class level, and of $0.9$ on the bubble level.
+of $0.33$ on the class level, and of $0.9$ on the bubble level.
+We further assume a daily chance of non-Covid related symptoms of $0.01$ per
+individual. 
+
+```{julia define-population}
+@everywhere begin 
+
+function sample_school(gamma, schooldays, policy)
+	dm = LarremoreModel(
+		gamma;
+	    frac_symptomatic = 0.75,
+    	l10vl_onset = 1e3, day_onset_min = 2.5, day_onset_max = 3.5,
+    	l10vl_peak_min = 7.0, l10vl_peak_max = 11.0, peak_delay_max = 3.0, peak_delay_shape = 1.5,
+		symptom_delay_min = 0.0, symptom_delay_max = 3.0,
+    	l10vl_clearance = 1e6, clearance_delay_min = 4.0, clearance_delay_max = 9.0
+	)
+    ThreeLevelPopulation(
+    	n_per_bubble = 7,
+	    bubbles_per_class = 3,
+	    m_classes = 12,
+	    pr_meet_bubble = 0.9,
+	    pr_meet_class = 0.33,
+	    pr_meet_school = 1/251,
+	    policy_bubble = DoNothing(),
+	    policy_class = DoNothing(),
+	    policy_school = policy,
+	    meeting_days = schooldays,
+	    disease_model = dm,
+	    pr_unrelated_symptoms = 0.01
+    )
+end
+
+lfd_test = LogPropTest(
+	"lfd", 
+	5.0, # log-10 VL LOD 
+	1/12, # log-10 excess VL proportionality constant for sensitivity
+	.997 # specificity
+)
+
+
+tbl_policies = DataFrame(
+	name = ["default", "extended weekend", "test & release"],
+	schooldays = [collect(0:4), collect(0:2), collect(0:4)],
+	policy = [
+		SymptomaticIsolation(14, true),
+		SymptomaticIsolation(14, true),
+		DynamicScreening(lfd_test, 
+			pcr_turnaround = 2, 
+			isolation_duration = 14, 
+	    	followup_duration = 7, 
+			followup_weekdays = collect(0:4)
+		),
+	]
+)
+
+end # @everywhere
+
+show(tbl_policies)
+```
 
 
 

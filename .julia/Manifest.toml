@@ -349,7 +349,7 @@ version = "0.5.3"
 
 [[cov19sim]]
 deps = ["DataFrames", "DataFramesMeta", "Distributed", "Distributions", "Interpolations", "Random", "Statistics", "Test", "UUIDs"]
-git-tree-sha1 = "dfcfb0938665e75080be105a5d2b1613d8b7adfb"
+git-tree-sha1 = "f8bc9843bdfea5080d9484a511e8ddb5fb6226bc"
 repo-rev = "main"
 repo-url = "https://github.com/kkmann/cov19sim"
 uuid = "7070818b-bc4a-4efc-9908-1d2131e194b1"

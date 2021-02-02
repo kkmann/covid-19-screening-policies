@@ -11,6 +11,7 @@ library(JuliaCall)
 library(tidyverse)
 
 knitr::opts_chunk$set(
+	cache = TRUE,
 	echo = FALSE,
 	fig.width = 9,
 	fig.height = 9/1.61

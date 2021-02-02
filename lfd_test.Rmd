@@ -1,0 +1,126 @@
+---
+title: "Modeling Test Sensitivity as Function of Viral Load"
+author: "Kevin Kunzmann"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: html_document
+bibliography: references.bib
+---
+
+```{r r-setup, include=FALSE}
+library(JuliaCall)
+library(tidyverse)
+
+knitr::opts_chunk$set(
+	cache = TRUE,
+	echo = FALSE,
+	fig.width = 9,
+	fig.height = 9/1.61
+)
+
+set.seed(42)
+theme_set(
+	theme_bw() + 
+	theme(
+		legend.position = "top",
+		panel.grid.minor = element_blank(),
+		legend.title = element_blank()
+	)
+)
+```
+
+```{julia julia-setup, include=FALSE}
+using Pkg
+Pkg.activate(".julia")
+using cov19sim
+import Random.seed!
+seed!(42)
+```
+
+
+
+# Problem Statement
+
+This document briefly presents the disease and infection model for SARS-CoV-2
+presented in by Larremore and colleagues.
+The model is centered around and individual's viral load 
+(VL, measured in copies per milliliter $cp/ml$) trajectory over time.
+For original references justifying the choice of parameters, 
+please refer to the original publication [@larremore2020a].
+
+
+# Test Sensitivity as Function of Viral Load
+
+...
+
+
+
+# Example
+
+```{julia, results="hide"}
+dm = LarremoreModel(.033)
+
+# create 25 individuals
+inds = [Individual(dm, 0.01) for i in 1:25] # .01 chance of non-covid symptoms
+# infect them all
+infect!.(inds)
+# simulate some days forward
+steps!.(inds, 45)
+tbl_status = get_status_logs(inds)
+
+lfd_test = LogPropTest(
+	"lfd", 
+	5.0, # log-10 VL LOD 
+	1/12, # log-10 excess VL proportionality constant for sensitivity
+	.997 # specificity
+)
+
+tbl_status.sensitivity = sensitivity.(lfd_test, tbl_status[!, :viral_load])
+```
+
+```{r}
+tbl_status <- as_tibble(julia_eval("tbl_status"))
+```
+
+```{r, warning=FALSE, fig.height=7}
+tbl_status %>%
+	mutate(
+		symptomatic = factor(symptomatic, levels = c(FALSE, TRUE), labels = c("non-symptomatic", "symptomatic"))
+	) %>%
+	ggplot() +
+		aes(day, viral_load) +
+	 	geom_hline(yintercept = 1e6) +
+		geom_bar(aes(fill = symptomatic), stat = "identity", alpha = .66) +
+		scale_y_log10() +
+		ylab("viral load") +
+		facet_wrap(~uuid) +
+		theme(
+			strip.text = element_blank(),
+			strip.background = element_blank()
+		) + 
+		labs(
+			caption = "Random sample of VL trajectories with symptom status; black line indicates infectivity threshold."
+		)
+```
+
+```{r, warning=FALSE, fig.height=7}
+tbl_status %>%
+	mutate(
+		symptomatic = factor(symptomatic, levels = c(FALSE, TRUE), labels = c("non-symptomatic", "symptomatic"))
+	) %>%
+	ggplot() +
+		aes(viral_load, sensitivity) +
+		geom_point(aes(color = symptomatic)) +
+		scale_x_log10() +
+		xlab("viral load") +
+		theme(
+			strip.text = element_blank(),
+			strip.background = element_blank()
+		) + 
+		labs(
+			caption = "Corresponding scatterplot of test sensitivity against VL (log scale); color corresponds to infectivity."
+		)
+```
+
+
+
+# References

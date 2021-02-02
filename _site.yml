@@ -5,6 +5,8 @@ navbar:
       href: index.html
     - text: "Disease Model"
       href: disease_model.html
+    - text: "LFD Test Model"
+      href: lfd_test.html
     - text: "Test & Release for Schools"
       href: schools.html
   right: 

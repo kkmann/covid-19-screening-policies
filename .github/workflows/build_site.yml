@@ -35,7 +35,7 @@ jobs:
           sudo apt install libcurl4-openssl-dev libssl-dev libxml2-dev
       - name: Install R dependencies
         run: |
-          Rscript -e 'renv::restore(prompt = FALSE)'
+          Rscript -e 'source("renv/activate.R"); renv::restore(prompt = FALSE)'
       - name: build site
         run: |
           make all

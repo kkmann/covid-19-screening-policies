@@ -5,17 +5,40 @@ date: "`r format(Sys.time(), '%d %B, %Y')`"
 output: html_document
 ---
 
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+```{r r-setup, include=FALSE}
+library(JuliaCall)
+library(tidyverse)
+
+knitr::opts_chunk$set(
+	echo = FALSE,
+	fig.width = 8,
+	fig.height = 8/1.61
+)
+```
+
+```{julia julia-setup, include=FALSE}
+import Pkg; Pkg.activate(".julia")
+using Distributed
+addprocs(Sys.CPU_THREADS)
+@everywhere begin
+	import Pkg; Pkg.activate(".julia")
+	using cov19sim
+end
 ```
 
 
-# test
+
+# Problem Statement
+
+# Population Model for School
+
+# Calibrating Infectivity
+
+# Evaluating Performance
+
+# Results
 
 ```{julia, results="hide"}
-import Pkg; Pkg.activate(".julia")
-using cov19sim
-
 function f(i)
     school = ThreeLevelPopulation(policy_bubble = SymptomaticIsolation(14, true))
     infect!.(school.individuals[1])

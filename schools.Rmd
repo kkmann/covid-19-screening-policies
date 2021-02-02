@@ -17,22 +17,67 @@ knitr::opts_chunk$set(
 ```
 
 ```{julia julia-setup, include=FALSE}
-import Pkg; Pkg.activate(".julia")
-using Distributed
+using Distributed, Pkg
+Pkg.activate(".julia"); using cov19sim
 addprocs(Sys.CPU_THREADS)
-@everywhere begin
-	import Pkg
-	Pkg.activate(".julia")
-	Pkg.instantiate()
-	using cov19sim
-end # @everywhere
+@everywhere using Pkg; Pkg.activate(".julia"); using cov19sim
 ```
 
 
 
 # Problem Statement
 
+The ongoing Covid-19 pandemic in the United Kingdom made nationwide lockdowns
+of schools a reality in late 2020 and early 2021.
+Such drastic policies are particularly burdensome for families with young
+children who cannot effectively attend remote schooling.
+The availability of cheap screening tests opens the opportunity of a more
+nuanced approach to reopening at least nurseries and primary schools.
+
+
+
+# Policies 
+
+For all policies, we assume that a 100% sensitive and specific PCR test is
+available (e.g., via repeated PCR testing).
+
+## Current Government Policy
+
+The current default policy (after reopening of schools) is to rely on symptomatic
+isolation of any pupil with symptoms and the corresponding bubble.
+We assume that all isolated individuals are followed-up with a PCR test and
+that the isolation period is determined by the outcome of the PCR test.
+If it is positive, the pupil can return to school, if it is negative the 
+pupil has to isolate for 14 additional days post-result. 
+Assuming an average turnaround of 2 days for the PCR test this means that
+negative individuals have to isolate on the day of the index event and the 
+following day while PCR positive individuals have to isolate for a total of 
+14 days.
+
+
+
+
 # Population Model for School
+
+We consider a typical UK primary school with two tracks of classes for all 
+six grades (a total of 12 classes).
+We further assume that each class can be split in three bubbles (overall 36 bubbles) 
+and that risk-contacts among pupils who do not belong to the same bubble can be reduced
+greatly.
+Finally, we assume that each bubble consists of eight pupils bringing the
+total number of pupils to $7\cdot 3\cdot 12=252$.
+
+On each of the three levels (bubble/class/school) member of the same group 
+have a certain chance of a daily risk-contact ('meeting probability'). 
+After applying the respective test and isolation policies for all groups,
+risk contacts on all levels are independently sampled.
+For each risk-contact, the corresponding infection probability is used to 
+determine (again by random sampling) weather or not a transmission occurs.
+
+We do not model staff explicitly.
+
+
+
 
 # Calibrating Infectivity
 
@@ -55,8 +100,6 @@ tbl_res = vcat(pmap(f, 1:50)...)
 ```
 
 ```{r}
-library(JuliaCall)
-library(tidyverse)
 julia_eval("tbl_res") %>% as_tibble()
 ```
 

@@ -1,0 +1,34 @@
+---
+title: "Untitled"
+author: "Kevin Kunzmann"
+date: "2 2 2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+# test
+
+```{julia, results="hide"}
+import Pkg; Pkg.activate(".julia")
+using cov19sim
+
+function f(i)
+    school = ThreeLevelPopulation(policy_bubble = SymptomaticIsolation(14, true))
+    infect!.(school.individuals[1])
+    steps!(school, 80)
+    evaluate(school)
+end
+
+tbl_res = vcat(map(f, 1:50)...)
+```
+
+```{r}
+library(JuliaCall)
+library(tidyverse)
+julia_eval("tbl_res") %>% as_tibble()
+```
+

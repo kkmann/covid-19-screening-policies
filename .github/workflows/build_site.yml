@@ -1,0 +1,49 @@
+name: build & deploy site
+
+on: 
+  push:
+    branches: main	
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        julia-version: ['1']
+        julia-arch: [x64]
+        os: [ubuntu-20.04]
+        r: ['release']
+        rspm: ["https://packagemanager.rstudio.com/cran/__linux__/focal/latest"]
+
+    steps:
+      - uses: actions/checkout@v2
+      - uses: julia-actions/setup-julia@v1
+        with:
+          version: ${{ matrix.julia-version }}
+      - uses: r-lib/actions/setup-r@master
+        with:
+          r-version: ${{ matrix.config.r }}
+      - uses: r-lib/actions/setup-pandoc@master
+      - name: Cache R packages
+        uses: actions/cache@v2
+        with:
+          path: ${{ env.R_LIBS_USER }}
+          key: ${{ runner.os }}-${{ hashFiles('.github/R-version') }}-1-${{ hashFiles('.github/depends.Rds') }}
+          restore-keys: ${{ runner.os }}-${{ hashFiles('.github/R-version') }}-1-
+      - name: Install system dependencies
+        run: |
+          sudo apt install libcurl4-openssl-dev libssl-dev libxml2-dev
+      - name: Install R dependencies
+        run: |
+          Rscript -e 'renv::restore(prompt = FALSE)'
+      - name: build site
+        run: |
+          make all
+      - name: deploy to gh-pages
+        uses: JamesIves/github-pages-deploy-action@3.7.1
+        with:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BRANCH: gh-pages # The branch the action should deploy to.
+          FOLDER: _site # The folder the action should deploy.
+          CLEAN: true # Automatically remove deleted files from the deploy branch
+          

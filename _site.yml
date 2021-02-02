@@ -1,18 +1,17 @@
-name: "cat-website"
+name: "Small-Scale Agent-Based Simulations of Test and Isolation Policies"
 navbar:
-  title: "My cats' website"
   left:
     - text: "Home"
       href: index.html
-    - text: "test"
-      href: test.html
+    - text: "Test & Release for Schools"
+      href: schools.html
   right: 
     - icon: fa-envelope fa-lg
       href: mailto:<kevin.kunzmann@mrc-bsu.cam.ac.uk>
-    - icon: fa-github fa-lg
-      href: http://github.com/kkmann/
+    - icon: fab fa-github
+      href: https://github.com/kkmann/covid-19-screening-policies
 output:
   html_document:
-    theme: darkly
+    theme: flatly
 
 exclude: [".github", ".julia", "Makefile", "renv.lock", "renv"]

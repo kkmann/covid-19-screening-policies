@@ -1,7 +1,7 @@
 ---
-title: "Untitled"
+title: "Is 'Test & Release' Viable to Reopen Schools?"
 author: "Kevin Kunzmann"
-date: "2 2 2021"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
 output: html_document
 ---
 

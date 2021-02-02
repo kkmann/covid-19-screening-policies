@@ -16,24 +16,28 @@ jobs:
         rspm: ["https://packagemanager.rstudio.com/cran/__linux__/focal/latest"]
 
     steps:
-      - uses: actions/checkout@v2
-      - uses: julia-actions/setup-julia@v1
+      - name: check out repository
+        uses: actions/checkout@v2
+      - name: install julia
+        uses: julia-actions/setup-julia@v1
         with:
           version: ${{ matrix.julia-version }}
-      - uses: r-lib/actions/setup-r@master
+      - name: install R
+        uses: r-lib/actions/setup-r@master
         with:
           r-version: ${{ matrix.config.r }}
-      - uses: r-lib/actions/setup-pandoc@master
-      - name: Cache R packages
+      - name: install pandoc 
+        uses: r-lib/actions/setup-pandoc@master
+      - name: cache R packages
         uses: actions/cache@v2
         with:
           path: ${{ env.R_LIBS_USER }}
           key: ${{ runner.os }}-${{ hashFiles('.github/R-version') }}-1-${{ hashFiles('.github/depends.Rds') }}
           restore-keys: ${{ runner.os }}-${{ hashFiles('.github/R-version') }}-1-
-      - name: Install system dependencies
+      - name: install system dependencies
         run: |
           sudo apt install libcurl4-openssl-dev libssl-dev libxml2-dev
-      - name: Install R dependencies
+      - name: install R dependencies
         run: |
           Rscript -e 'source("renv/activate.R"); renv::restore(prompt = FALSE)'
       - name: build site

@@ -11,7 +11,7 @@ library(JuliaCall)
 library(tidyverse)
 
 knitr::opts_chunk$set(
-	cache = TRUE,
+	# cache = TRUE,
 	echo = FALSE,
 	fig.width = 9,
 	fig.height = 9/1.61
@@ -29,7 +29,8 @@ theme_set(
 
 ```{julia julia-setup, include=FALSE}
 using Distributed, Pkg
-Pkg.activate(".julia"); using cov19sim
+Pkg.activate(".julia")
+using cov19sim
 addprocs(Sys.CPU_THREADS)
 @everywhere begin 
 	using Pkg
@@ -120,11 +121,11 @@ individual.
 function sample_school(gamma, schooldays, policy)
 	dm = LarremoreModel(
 		gamma;
-	    frac_symptomatic = 0.75,
-    	l10vl_onset = 1e3, day_onset_min = 2.5, day_onset_max = 3.5,
+	    frac_symptomatic = 0.5,
+    	l10vl_onset = 3.0, day_onset_min = 2.5, day_onset_max = 3.5,
     	l10vl_peak_min = 7.0, l10vl_peak_max = 11.0, peak_delay_max = 3.0, peak_delay_shape = 1.5,
 		symptom_delay_min = 0.0, symptom_delay_max = 3.0,
-    	l10vl_clearance = 1e6, clearance_delay_min = 4.0, clearance_delay_max = 9.0
+    	l10vl_clearance = 6.0, clearance_delay_min = 4.0, clearance_delay_max = 9.0
 	)
     ThreeLevelPopulation(
     	n_per_bubble = 7,
@@ -151,17 +152,17 @@ lfd_test = LogPropTest(
 
 
 tbl_policies = DataFrame(
-	name = ["default", "extended weekend", "test & release"],
-	schooldays = [collect(0:4), collect(0:2), collect(0:4)],
+	name = ["default", "extended weekend"], #, "test & release"],
+	schooldays = [collect(0:4), collect(0:1)], #, collect(0:4)],
 	policy = [
 		SymptomaticIsolation(14, true),
-		SymptomaticIsolation(14, true),
-		DynamicScreening(lfd_test, 
-			pcr_turnaround = 2, 
-			isolation_duration = 14, 
-	    	followup_duration = 7, 
-			followup_weekdays = collect(0:4)
-		),
+		SymptomaticIsolation(14, true)
+	# 	DynamicScreening(lfd_test, 
+	# 		pcr_turnaround = 2, 
+	# 		isolation_duration = 14, 
+	#     	followup_duration = 7, 
+	# 		followup_weekdays = collect(0:4)
+	# 	)
 	]
 )
 
@@ -185,20 +186,11 @@ desired $r_0$.
 @everywhere begin 
 
 function f(gamma)
-	dm = LarremoreModel(
-	    0.75, # fraction symptomatic
-	    3.0, 2.5, 3.5, # onset height and delay
-	    7.0, 11.0, 3.0, 1.5, # peak
-	    0.0, 3.0, # symptoms
-	    6.0, 4.0, 9.0, # clearance
-	    gamma # infectivity
-	)
-    school = ThreeLevelPopulation(
-    	policy_bubble = SymptomaticIsolation(14, true),
-    	disease_model = dm
+    school = sample_school(
+    	gamma, tbl_policies[1, :schooldays], tbl_policies[1, :policy]
     )
     infect!.(school.individuals[1])
-    steps!(school, 20)
+    steps!(school, 21)
     res = get_contact_log(school.individuals[1])
     res[!, :gamma] .= gamma
     res
@@ -206,9 +198,8 @@ end
 
 end # @everywhere
 
-using DataFrames
 tbl_r0 = DataFrame(
-		gamma = collect(range(0, 0.1, length = 1000))
+		gamma = collect(range(0, 0.15, length = 1000))
 	)
 tbl_tmp = vcat(pmap(f, tbl_r0[!, :gamma])...)
 tbl_r0 = leftjoin(tbl_r0, tbl_tmp; on = :gamma)
@@ -236,21 +227,33 @@ We thus consider the following three scenarios:
 1. $r_0=1.0$: best-case scenario.
 2. $r_0=1.25$: reasonably slow spread.
 3. $r_0=2$: fast spread.
+4. $r_0=5$: very fast spread.
 
 ```{r}
 fit <- glm(r0 ~ gamma, family = "poisson", data = tbl_r0)
 infectivity <- function(r0) {
 	f <- function(gamma) as.numeric(predict(fit, newdata = tibble(gamma = gamma), type = "response"))
-	as.numeric(uniroot(function(x) f(x) - r0, interval = c(0, .1))$root)
+	as.numeric(uniroot(function(x) f(x) - r0, interval = c(0, .15))$root)
 }
 ```
 
-```{r}
+```{r define-scenarios}
 tbl_scenarios <- tibble(
-	r0 = c(1, 1.25, 2),
-	gamma = purrr::map_dbl(r0, infectivity)
-)
-knitr::kable(tbl_scenarios, caption = "Considered infectivity scenarios.")
+		r0 = c(1.5, 2, 5),
+		gamma = purrr::map_dbl(r0, infectivity)
+	) %>%
+	expand_grid(
+		iter = 1:50,
+		name = c("default", "extended weekend") #, "test & release")
+	)
+julia_assign("tbl_scenarios", as.data.frame(tbl_scenarios))
+tbl_scenarios %>%
+	group_by(r0, name) %>%
+	summarize(
+		resamples = n(),
+		.groups = "drop"
+	) %>%
+	knitr::kable(caption = "Considered infectivity scenarios.")
 ```
 
 
@@ -270,26 +273,49 @@ and the average daily number of contacts might all be of interest.
 
 # Results
 
+```{julia run-simulation, results="hide"}
+# join with actual policy definitions
+tbl_scenarios = leftjoin(tbl_scenarios, tbl_policies, on = :name)
 
-```{julia, results="hide", eval=FALSE}
-@everywhere begin 
-
-function f(i)
-    school = ThreeLevelPopulation(policy_bubble = SymptomaticIsolation(14, true))
-    infect!.(school.individuals[1])
-    steps!(school, 80)
+@everywhere function evaluate_school(gamma, schooldays, policy)
+	school = sample_school(gamma, schooldays, policy)
+	infect!.(school.individuals[1])
+    steps!(school, 12*7)
     evaluate(school)
 end
 
-end #@everywhere
-
-tbl_res = vcat(pmap(f, 1:50)...)
+tbl_results = hcat(
+	tbl_scenarios,
+	vcat(pmap(
+		evaluate_school,
+		tbl_scenarios[!, :gamma],
+		tbl_scenarios[!, :schooldays],
+		tbl_scenarios[!, :policy]
+	)...)
+)
+# deselect complex columns, don't need ID
+select!(tbl_results, Not([:policy, :schooldays, :id]))
 ```
 
-```{r, eval=FALSE}
-julia_eval("tbl_res") %>% as_tibble()
+```{r retrieve-simulation-results}
+tbl_results <- as_tibble(julia_eval("tbl_results"))
 ```
 
+```{r plot-simulation-results, fig.height=10}
+tbl_results %>%
+	pivot_longer(-c(r0, gamma, iter, name), names_to = "quantity") %>%
+	ggplot() +
+		geom_boxplot(
+			aes(x = factor(r0), color = name, y = value), 
+			outlier.shape = NA
+		) +
+		facet_wrap(
+			~quantity,
+			scales = "free",
+			# labeller = labeller(function(r0) sprintf("r-zero: %s", r0))
+		) +
+		labs(x = "r zero", y = "")
+```
 
 
 # References

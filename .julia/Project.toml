@@ -1,3 +1,4 @@
 [deps]
 DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
+RCall = "6f49c342-dc21-5d91-9882-a32aef131414"
 cov19sim = "7070818b-bc4a-4efc-9908-1d2131e194b1"

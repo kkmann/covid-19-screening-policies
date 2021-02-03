@@ -117,7 +117,7 @@ tbl_status %>%
 			strip.background = element_blank()
 		) + 
 		labs(
-			caption = "Corresponding scatterplot of test sensitivity against VL (log scale); color corresponds to infectivity."
+			caption = "Corresponding scatterplot of test sensitivity against VL (log scale); color corresponds to syptom status."
 		)
 ```
 

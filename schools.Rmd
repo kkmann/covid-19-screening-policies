@@ -50,7 +50,7 @@ children who cannot effectively attend remote schooling.
 The availability of cheap screening tests opens the opportunity of a more
 nuanced approach to reopening at least nurseries and primary schools.
 However, the impact of the various screening and isolation policies on key
-performance indivators is not well understood.
+performance indicators is not well understood.
 
 
 
@@ -60,7 +60,7 @@ For all policies, we assume that a 100% sensitive and specific PCR test is
 available (e.g., via repeated PCR testing).
 
 
-## Current Government Policy
+## Current Government Policy (default)
 
 The current default policy (after reopening of schools) is to rely on symptomatic
 isolation of any pupil with symptoms and the corresponding bubble.
@@ -72,6 +72,27 @@ Assuming an average turnaround of 2 days for the PCR test this means that
 negative individuals have to isolate on the day of the index event and the 
 following day while PCR positive individuals have to isolate for a total of 
 14 days.
+
+
+## Extended Weekend
+
+An alternative to prolonged lockdowns is the extension of the weekend.
+Since the incubation time under the Larremore model is at least three days,
+we combine the current default policy with school-free Thursdays and Fridays.
+
+
+## Regular Screening
+
+Initially, the LFD tests were envisioned to screen the entire population
+regularly.
+Due to concerns about compliance and testing burden on small children, 
+a once-weekly scheme seems much more realistic than a daily scheme.
+We consider a testing scheme where each pupil is screened with an LFD test
+every Monday (unless they are isolating).
+Positive LFD tests or symptomatic cases are followed up with a PCR test to
+determine the length of isolation as usual.
+No preemptive bubble isolation is implemented.
+
 
 
 ## 'Test & Release' Approach
@@ -152,17 +173,18 @@ lfd_test = LogPropTest(
 
 
 tbl_policies = DataFrame(
-	name = ["default", "extended weekend"], #, "test & release"],
-	schooldays = [collect(0:4), collect(0:1)], #, collect(0:4)],
+	name = ["default", "extended weekend", "regular screening", "test & release"],
+	schooldays = [collect(0:4), collect(0:2), collect(0:4), collect(0:4)],
 	policy = [
 		SymptomaticIsolation(14, true),
-		SymptomaticIsolation(14, true)
-	# 	DynamicScreening(lfd_test, 
-	# 		pcr_turnaround = 2, 
-	# 		isolation_duration = 14, 
-	#     	followup_duration = 7, 
-	# 		followup_weekdays = collect(0:4)
-	# 	)
+		SymptomaticIsolation(14, true),
+		RegularScreening(lfd_test; isolate_all = false, test_weekdays = [0]),
+		DynamicScreening(lfd_test,
+			pcr_turnaround = 2,
+			isolation_duration = 14,
+	    	followup_duration = 7,
+			followup_weekdays = collect(0:4)
+		)
 	]
 )
 
@@ -221,13 +243,8 @@ ggplot(tbl_r0) +
 ```
 
 An $r_0$ of less than $1$ in a school environment under only symptomatic self
-isolation is highly unlikely.
-We thus consider the following three scenarios:
-
-1. $r_0=1.0$: best-case scenario.
-2. $r_0=1.25$: reasonably slow spread.
-3. $r_0=2$: fast spread.
-4. $r_0=5$: very fast spread.
+isolation is highly unlikely and thus considered the best-case-scenario.
+We then investigate the impact of different r zero values up to $r_0=5$.
 
 ```{r}
 fit <- glm(r0 ~ gamma, family = "poisson", data = tbl_r0)
@@ -239,12 +256,12 @@ infectivity <- function(r0) {
 
 ```{r define-scenarios}
 tbl_scenarios <- tibble(
-		r0 = c(1.5, 2, 5),
+		r0 = c(1.5, 2, 3, 5),
 		gamma = purrr::map_dbl(r0, infectivity)
 	) %>%
 	expand_grid(
-		iter = 1:50,
-		name = c("default", "extended weekend") #, "test & release")
+		iter = 1:100,
+		name = c("default", "extended weekend", "regular screening", "test & release")
 	)
 julia_assign("tbl_scenarios", as.data.frame(tbl_scenarios))
 tbl_scenarios %>%
@@ -262,12 +279,12 @@ tbl_scenarios %>%
 
 When comparing policies, it is important to look at all relevant key performance
 indicators.
-In a school-context, the number of infections is secondary since almost all
+In a school context, the number of infections is secondary since almost all
 disease courses are very mild.
-The number of infectious pupils might, however, be of interest as an indicator
+The number of *infectious* pupils might, however, be of interest as an indicator
 for the risk posed to the wider community.
-Furthermore, the fraction of schooldays missed, the number of (PCR) tests required,
-and the average daily number of contacts might all be of interest.
+Furthermore, the number of schooldays missed, the number of (PCR) tests required,
+and the average daily number of contacts might all be of interest as well.
 
 
 
@@ -301,7 +318,7 @@ select!(tbl_results, Not([:policy, :schooldays, :id]))
 tbl_results <- as_tibble(julia_eval("tbl_results"))
 ```
 
-```{r plot-simulation-results, fig.height=10}
+```{r plot-simulation-results, fig.height=8}
 tbl_results %>%
 	pivot_longer(-c(r0, gamma, iter, name), names_to = "quantity") %>%
 	ggplot() +

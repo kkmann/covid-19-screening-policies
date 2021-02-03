@@ -40,21 +40,33 @@ seed!(42)
 
 # Problem Statement
 
-This document briefly presents the disease and infection model for SARS-CoV-2
-presented in by Larremore and colleagues.
-The model is centered around and individual's viral load 
-(VL, measured in copies per milliliter $cp/ml$) trajectory over time.
-For original references justifying the choice of parameters, 
-please refer to the original publication [@larremore2020a].
+This document outlines a simple model for the sensitivity of a screening test
+for Covid-19 as function of the latent viral load.
+
 
 
 # Test Sensitivity as Function of Viral Load
 
-...
+We model the sensitivity as proportional to the excess log-10 viral load, i.e.
+$$
+\operatorname{sensitivity}(vl) := \Big[\eta\, \big(\log_{10}(vl) - \log_{10}(\operatorname{LOD})\big)\Big]_0^1
+$$
+where $vl$ is the viral load, $\operatorname{LOD}$ the limit of detection,
+$[x]_0^1:=\min(1, \max(0, x))$, and $\eta$ a proportionality constant.
+This is analogue to the model for infection probability used in the 
+Larremore model [@larremore2020a] and thus introduces a correlation between 
+the sensitivity of screening tests and the infectivity of an individual at any given
+point in time.
+Note that there is no temporal correlation of test results other than via the
+dependency on the latent viral load trajectory, i.e., repeated tests are treated
+as independent.
 
 
 
 # Example
+
+Looking at a sample of 25 disease trajectories, we can plot sensitivity as
+function of viral load for an $\operatorname{LOD}$ of $1e5$, and a slope of $\eta=1/12$. 
 
 ```{julia, results="hide"}
 dm = LarremoreModel(.033)
@@ -103,7 +115,7 @@ tbl_status %>%
 ```
 
 ```{r, warning=FALSE, fig.height=7}
-tbl_status %>%
+plt <- tbl_status %>%
 	mutate(
 		symptomatic = factor(symptomatic, levels = c(FALSE, TRUE), labels = c("non-symptomatic", "symptomatic"))
 	) %>%
@@ -119,6 +131,7 @@ tbl_status %>%
 		labs(
 			caption = "Corresponding scatterplot of test sensitivity against VL (log scale); color corresponds to syptom status."
 		)
+ggExtra::ggMarginal(plt, type = "histogram", color = "darkgray", fill = "darkgray", size = 9)
 ```
 
 

@@ -41,11 +41,12 @@ seed!(42)
 # Problem Statement
 
 This document briefly presents the disease and infection model for SARS-CoV-2
-presented in by Larremore and colleagues.
-The model is centered around and individual's viral load 
+used by Larremore and colleagues [@larremore2020a].
+The model is centered around an individual's viral load 
 (VL, measured in copies per milliliter $cp/ml$) trajectory over time.
-For original references justifying the choice of parameters, 
-please refer to the original publication [@larremore2020a].
+For references justifying the choice of individual parameters, 
+please refer to the original publication.
+
 
 
 # Viral Load Model

@@ -31,11 +31,15 @@ jobs:
           r-version: ${{ matrix.config.r }}
       - name: install pandoc 
         uses: r-lib/actions/setup-pandoc@master
+      - name: query R dependencies
+        run: |
+          writeLines(sprintf("R-%i.%i", getRversion()$major, getRversion()$minor), ".github/R-version")
+        shell: Rscript {0}
       - name: cache R packages
         uses: actions/cache@v2
         with:
           path: ${{ env.R_LIBS_USER }}
-          key: ${{ runner.os }}-${{ hashFiles('.github/R-version') }}-1-${{ hashFiles('.github/depends.Rds') }}
+          key: ${{ runner.os }}-${{ hashFiles('.github/R-version') }}-1-${{ hashFiles('renv.lock') }}
           restore-keys: ${{ runner.os }}-${{ hashFiles('.github/R-version') }}-1-
       - name: install system dependencies
         run: |

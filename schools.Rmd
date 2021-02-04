@@ -1,5 +1,5 @@
 ---
-title: "Is 'Test & Release' Viable to Reopen Schools?"
+title: "Policy Evaluation for Reopening of Schools"
 author: "Kevin Kunzmann"
 date: "`r format(Sys.time(), '%d %B, %Y')`"
 output: html_document
@@ -37,7 +37,7 @@ addprocs(Sys.CPU_THREADS)
 @everywhere begin 
 	using Pkg
 	Pkg.activate(".julia")
-	using cov19sim, DataFrames
+	using cov19sim, DataFrames, Distributions
 end
 ```
 
@@ -65,15 +65,8 @@ available (e.g., via repeated PCR testing).
 ## Current Government Policy (default)
 
 The current default policy (after reopening of schools) is to rely on symptomatic
-isolation of any pupil with symptoms and the corresponding bubble.
-We assume that all isolated individuals are followed-up with a PCR test and
-that the isolation period is determined by the outcome of the PCR test.
-If it is positive, the pupil can return to school, if it is negative the 
-pupil has to isolate for 14 additional days post-result. 
-Assuming an average turnaround of 2 days for the PCR test this means that
-negative individuals have to isolate on the day of the index event and the 
-following day while PCR positive individuals have to isolate for a total of 
-14 days.
+isolation of any pupil with symptoms and the entire corresponding bubble.
+We assume that all individuals isolate for 14 days.
 
 
 ## Extended Weekend
@@ -137,6 +130,9 @@ We assume a daily meeting probability of $1/251$ on the school level,
 of $0.33$ on the class level, and of $0.9$ on the bubble level.
 We further assume a daily chance of non-Covid related symptoms of $0.01$ per
 individual. 
+Further, we assume that every individual is at risk of an external infection 
+with a probability of $1/7/252$, i.e., there is roughly one new external
+infection per week on average.
 
 ```{julia define-population, results="hide"}
 @everywhere begin 
@@ -222,6 +218,8 @@ The Larremore disease model [@larremore2020a] critically depends on the
 choice of the infectivity constant $\gamma$.
 We fit a calibration curve for $\gamma$ by simulating $r_0$ for a range of
 infectivity values.
+To that end a single index case is externally infected at day $0$ and the
+population is simulated for 21 days.
 A Poisson regression can then be used to obtain $\gamma$ as function of the
 desired $r_0$.
 
@@ -285,13 +283,13 @@ tbl_scenarios <- tibble(
 		name = c("default", "extended weekend", "regular screening", "test & release")
 	)
 julia_assign("tbl_scenarios", as.data.frame(tbl_scenarios))
-tbl_scenarios %>%
-	group_by(r0, name) %>%
-	summarize(
-		resamples = n(),
-		.groups = "drop"
-	) %>%
-	knitr::kable(caption = "Considered infectivity scenarios.")
+# tbl_scenarios %>%
+# 	group_by(r0, name) %>%
+# 	summarize(
+# 		resamples = n(),
+# 		.groups = "drop"
+# 	) %>%
+# 	knitr::kable(caption = "Considered infectivity scenarios.")
 ```
 
 
@@ -317,8 +315,14 @@ tbl_scenarios = leftjoin(tbl_scenarios, tbl_policies, on = :name)
 
 @everywhere function evaluate_school(gamma, schooldays, policy)
 	school = sample_school(gamma, schooldays, policy)
-	infect!.(school.individuals[1])
-    steps!(school, 12*7)
+	for i in 1:(12*7)
+		for indv in school.individuals
+			if rand(Bernoulli(1/length(school.individuals)/7))
+				infect!(indv)
+			end
+		end
+    	step!(school)
+    end
     evaluate(school)
 end
 

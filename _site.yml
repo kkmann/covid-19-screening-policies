@@ -7,7 +7,7 @@ navbar:
       href: disease_model.html
     - text: "LFD Test Model"
       href: lfd_test.html
-    - text: "Test & Release for Schools"
+    - text: "Policy Evaluation for Reopening of Schools"
       href: schools.html
   right: 
     - icon: fa-envelope fa-lg

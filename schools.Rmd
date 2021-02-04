@@ -9,6 +9,8 @@ bibliography: references.bib
 ```{r r-setup, include=FALSE}
 library(JuliaCall)
 library(tidyverse)
+library(tidygraph)
+library(ggraph)
 
 knitr::opts_chunk$set(
 	cache = TRUE,
@@ -136,7 +138,7 @@ of $0.33$ on the class level, and of $0.9$ on the bubble level.
 We further assume a daily chance of non-Covid related symptoms of $0.01$ per
 individual. 
 
-```{julia define-population}
+```{julia define-population, results="hide"}
 @everywhere begin 
 
 function sample_school(gamma, schooldays, policy)
@@ -183,23 +185,48 @@ tbl_policies = DataFrame(
 )
 
 end # @everywhere
+```
 
-show(tbl_policies)
+```{julia, results="hide"}
+school = sample_school(.033, collect(0:4), DoNothing())
+A = get_adjacency_matrix(school)
+```
+
+```{r}
+A <- julia_eval("A")
+```
+
+```{r, fig.height = 9}
+ggraph(as_tbl_graph(A), "matrix") +
+	geom_edge_tile(aes(fill = weight)) + 
+	scale_edge_fill_continuous(
+		"", 
+		low = "#dddddd", high = "#000000", na.value = "white",
+		limits = c(0, NA_real_)
+	) +
+	coord_fixed() +
+	theme_graph() +
+	theme(
+		legend.position = "top"
+	) +
+	labs(
+		caption = "Adjacency matrix of the proposed population model;\r\nconnection strength is given in expected pairwise daily risk contacts across all shared groups."
+	)
 ```
 
 
 
 # Calibrating Infectivity
 
-The Larremore disease model [@larremore2020a] critically depends on the 
+The Larremore disease model [@larremore2020a] critically depends on the
 choice of the infectivity constant $\gamma$.
-We fit a calibration curve for $\gamma$ by simulating $r_0$ for a range of 
+We fit a calibration curve for $\gamma$ by simulating $r_0$ for a range of
 infectivity values.
 A Poisson regression can then be used to obtain $\gamma$ as function of the
 desired $r_0$.
 
 ```{julia, results="hide"}
-@everywhere begin 
+@everywhere begin
 
 function f(gamma)
     school = sample_school(
@@ -227,7 +254,7 @@ tbl_r0 <- as_tibble(julia_eval("tbl_r0"))
 
 ```{r}
 tbl_r0 <- tbl_r0 %>%
-	group_by(gamma, uuid_a) %>% 
+	group_by(gamma, uuid_a) %>%
 	summarize(r0 = sum(infected_other), .groups = "drop")
 
 ggplot(tbl_r0) +
@@ -317,7 +344,7 @@ tbl_results %>%
 	pivot_longer(-c(r0, gamma, iter, name), names_to = "quantity") %>%
 	ggplot() +
 		geom_boxplot(
-			aes(x = factor(r0), color = name, y = value), 
+			aes(x = factor(r0), color = name, y = value),
 			outlier.shape = NA
 		) +
 		facet_wrap(

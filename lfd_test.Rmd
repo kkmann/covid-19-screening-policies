@@ -47,91 +47,116 @@ for Covid-19 as function of the latent viral load.
 
 # Test Sensitivity as Function of Viral Load
 
-We model the sensitivity as proportional to the excess log-10 viral load, i.e.
+Concerns about modeling the between-individual heterogeneity of test sensitivity
+(see comments by J Deeks to [@kmietowicz2021a]) lead us to a random effects
+logistic model for test sensitivity.
+
 $$
-\operatorname{sensitivity}(vl) := \Big[\eta\, \big(\log_{10}(vl) - \log_{10}(\operatorname{LOD})\big)\Big]_0^1
+\operatorname{sensitivity}(vl, u) := \operatorname{logit}^{-1}\Big( 
+	\beta_{evl} \cdot \log_{10}\big( vl - \operatorname{LOD} \big) 
+	+ \beta_{u}\cdot u
+	+ c
+\Big) \cdot \boldsymbol{1}_{\,vl\, \geq\, \operatorname{LOD}}
 $$
 where $vl$ is the viral load, $\operatorname{LOD}$ the limit of detection,
-$[x]_0^1:=\min(1, \max(0, x))$, and $\eta$ a proportionality constant.
-This is analogue to the model for infection probability used in the 
-Larremore model [@larremore2020a] and thus introduces a correlation between 
-the sensitivity of screening tests and the infectivity of an individual at any given
-point in time.
-Note that there is no temporal correlation of test results other than via the
-dependency on the latent viral load trajectory, i.e., repeated tests are treated
-as independent.
+$u$ us an individuals latent 'testing random effect' $U\sim\mathcal{N}(0,1)$,
+$\beta_{evl}, \beta_u$ are the model coefficients, and $c$ is the intercept.
+We use log-10 excess viral load in analogy to the infection probability 
+model proposed in [@larremore2020a].
+The random effects allow a stronger temporal correlation of an individuals 
+test results as compared to a model that only relies on the latent viral load
+trajectories.
 
 
 
 # Example
 
 Looking at a sample of 25 disease trajectories, we can plot sensitivity as
-function of viral load for an $\operatorname{LOD}$ of $1e5$, and a slope of $\eta=1/12$. 
+function of viral load for an $\operatorname{LOD}$ of $1e5$ (just below infectivity), 
+and $\beta_{evl} = 1.0, \beta_u = 0.5, c = -9.0$.
 
 ```{julia, results="hide"}
 dm = LarremoreModel(.033)
 
-# create 25 individuals
-inds = [Individual(dm, 0.01) for i in 1:25] # .01 chance of non-covid symptoms
+# create individuals
+individuals = [Individual(dm, 0.0) for i in 1:16] # no chance of non-covid symptoms
 # infect them all
-infect!.(inds)
+infect!.(individuals)
+lfd = LogGLMTest("lfd", 1e5, 1.0, .5, -9.0, .997)
 # simulate some days forward
-steps!.(inds, 45)
-tbl_status = get_status_logs(inds)
+for i in 1:45
+	conduct_test!.(lfd, individuals)
+    step!.(individuals)
+end
+conduct_test!.(lfd, individuals)
 
-lfd_test = LogPropTest(
-	"lfd", 
-	5.0, # log-10 VL LOD 
-	1/12, # log-10 excess VL proportionality constant for sensitivity
-	.997 # specificity
-)
-
-tbl_status.sensitivity = sensitivity.(lfd_test, tbl_status[!, :viral_load])
+tbl_tests = get_test_logs(individuals)
+tbl_status = get_status_logs(individuals)
 ```
 
 ```{r}
+tbl_tests <- as_tibble(julia_eval("tbl_tests"))
 tbl_status <- as_tibble(julia_eval("tbl_status"))
 ```
 
-```{r, warning=FALSE, fig.height=7}
+```{r, warning=FALSE}
 tbl_status %>%
 	mutate(
 		symptomatic = factor(symptomatic, levels = c(FALSE, TRUE), labels = c("non-symptomatic", "symptomatic"))
 	) %>%
 	ggplot() +
 		aes(day, viral_load) +
-	 	geom_hline(yintercept = 1e6) +
+		geom_hline(yintercept = 1e5) +
+	 	geom_hline(yintercept = 1e6, color = "gray") +
 		geom_bar(aes(fill = symptomatic), stat = "identity", alpha = .66) +
 		scale_y_log10() +
-		ylab("viral load") +
 		facet_wrap(~uuid) +
 		theme(
 			strip.text = element_blank(),
-			strip.background = element_blank()
+			strip.background = element_blank(),
+			panel.grid = element_blank()
 		) + 
 		labs(
-			caption = "Random sample of VL trajectories with symptom status; black line indicates infectivity threshold."
+			y = "viral load",
+			caption = "Random sample of VL trajectories with symptom status; black line indicates LOD; gray line indicates infectivity threshold."
 		)
 ```
 
-```{r, warning=FALSE, fig.height=7}
-plt <- tbl_status %>%
-	mutate(
-		symptomatic = factor(symptomatic, levels = c(FALSE, TRUE), labels = c("non-symptomatic", "symptomatic"))
-	) %>%
+```{r, warning=FALSE}
+tbl_tests %>%
+	arrange(uuid, viral_load) %>%
 	ggplot() +
-		aes(viral_load, sensitivity) +
-		geom_point(aes(color = symptomatic)) +
+		aes(viral_load, probability_positive, group = uuid) +
+		geom_line(alpha = .33) +
 		scale_x_log10() +
-		xlab("viral load") +
 		theme(
 			strip.text = element_blank(),
-			strip.background = element_blank()
+			strip.background = element_blank(),
+			panel.grid = element_blank()
 		) + 
 		labs(
-			caption = "Corresponding scatterplot of test sensitivity against VL (log scale); color corresponds to syptom status."
+			x = "viral load",
+			y = "probability of positive test result",
+			caption = "Individual sensitivity curves."
 		)
-ggExtra::ggMarginal(plt, type = "histogram", color = "darkgray", fill = "darkgray", size = 9)
+```
+
+```{r}
+tbl_tests %>% 
+	ggplot() +
+		aes(day, probability_positive) +
+		geom_bar(aes(y = as.numeric(result)), stat = "identity", fill = "gray") +
+		geom_line() + 
+		facet_wrap(~uuid) +
+		theme(
+			strip.text = element_blank(),
+			strip.background = element_blank(),
+			panel.grid = element_blank()
+		) + 
+		labs(
+			y = "probability of positive test result",
+			caption = "Actual test-trajectories; gray bars correspond to positive test results; black line indicates probability of positive test result."
+		)
 ```
 
 

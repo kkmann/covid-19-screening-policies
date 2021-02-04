@@ -11,7 +11,7 @@ library(JuliaCall)
 library(tidyverse)
 
 knitr::opts_chunk$set(
-	# cache = TRUE,
+	cache = TRUE,
 	echo = FALSE,
 	fig.width = 9,
 	fig.height = 9/1.61
@@ -164,13 +164,7 @@ function sample_school(gamma, schooldays, policy)
     )
 end
 
-lfd_test = LogPropTest(
-	"lfd", 
-	5.0, # log-10 VL LOD 
-	1/12, # log-10 excess VL proportionality constant for sensitivity
-	.997 # specificity
-)
-
+lfd = LogGLMTest("lfd", 1e5, 1.0, .5, -9.0, .997)
 
 tbl_policies = DataFrame(
 	name = ["default", "extended weekend", "regular screening", "test & release"],
@@ -178,8 +172,8 @@ tbl_policies = DataFrame(
 	policy = [
 		SymptomaticIsolation(14, true),
 		SymptomaticIsolation(14, true),
-		RegularScreening(lfd_test; isolate_all = false, test_weekdays = [0]),
-		DynamicScreening(lfd_test,
+		RegularScreening(lfd; isolate_all = false, test_weekdays = [0]),
+		DynamicScreening(lfd,
 			pcr_turnaround = 2,
 			isolation_duration = 14,
 	    	followup_duration = 7,

@@ -1,5 +1,6 @@
 ---
-title: "Small-Scale Agent-Based Simulations of Test and Isolation Policies"
+title: "Covid-19 Policies for School Reopening"
+subtitle: "A Small-Scale, Agent-Based Evaluation"
 author: "Kevin Kunzmann"
 date: "`r format(Sys.time(), '%d %B, %Y')`"
 output: html_document
@@ -7,4 +8,6 @@ output: html_document
 
 # Introduction
 
-todo
+**this website is work in progress!**
+
+make sure to check out the github source at https://github.com/kkmann/covid-19-screening-policies

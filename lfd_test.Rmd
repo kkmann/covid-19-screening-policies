@@ -52,15 +52,15 @@ Concerns about modeling the between-individual heterogeneity of test sensitivity
 logistic model for test sensitivity.
 
 $$
-\operatorname{sensitivity}(vl, u) := \operatorname{logit}^{-1}\big( 
-	\beta_{evl} \cdot \log_{10}( vl - \operatorname{LOD} ) 
+\operatorname{sensitivity}(\operatorname{VL}, u) := \operatorname{logit}^{-1}\big( 
+	\beta_{\operatorname{eVL}} \cdot \log_{10}( \operatorname{VL} - \operatorname{LOD} ) 
 	+ \beta_{u}\cdot u
 	+ c
-\big) \cdot \boldsymbol{1}_{\,vl\, \geq\, \operatorname{LOD}}
+\big) \cdot \boldsymbol{1}_{\,\operatorname{VL}\, \geq\, \operatorname{LOD}}
 $$
-where $vl$ is the viral load, $\operatorname{LOD}$ the limit of detection,
+where $\operatorname{VL}$ is the viral load, $\operatorname{LOD}$ the limit of detection,
 $u$ us an individuals latent 'testing random effect' $U\sim\mathcal{N}(0,1)$,
-$\beta_{evl}, \beta_u$ are the model coefficients, and $c$ is the intercept.
+$\beta_{\operatorname{eVL}}, \beta_u$ are the model coefficients, and $c$ is the intercept.
 We use log-10 excess viral load in analogy to the infection probability 
 model proposed in [@larremore2020a].
 The random effects allow a stronger temporal correlation of an individuals 
@@ -73,7 +73,7 @@ trajectories.
 
 Looking at a sample of 25 disease trajectories, we can plot sensitivity as
 function of viral load for an $\operatorname{LOD}$ of $1e5$ (just below infectivity), 
-and $\beta_{evl} = 1.0, \beta_u = 0.5, c = -9.0$.
+and $\beta_{e\operatorname{VL}} = 1.0, \beta_u = 0.5, c = -9.0$.
 The typical ($U=0$) sensitivity curve is then given by the following plot. 
 
 ```{r typical-sensitivity}

@@ -48,9 +48,11 @@ jobs:
         run: |
           Rscript -e 'source("renv/activate.R"); renv::restore(prompt = FALSE)'
       - name: build site
+        if: ${{ github.ref == 'refs/heads/main' }}
         run: |
           make all
       - name: deploy to gh-pages
+        if: ${{ github.ref == 'refs/heads/main' }}
         uses: JamesIves/github-pages-deploy-action@3.7.1
         with:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

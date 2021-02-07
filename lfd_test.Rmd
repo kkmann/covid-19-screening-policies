@@ -10,6 +10,8 @@ bibliography: references.bib
 library(JuliaCall)
 library(tidyverse)
 
+source("util.R")
+
 knitr::opts_chunk$set(
 	cache = TRUE,
 	echo = FALSE,
@@ -18,14 +20,6 @@ knitr::opts_chunk$set(
 )
 
 set.seed(42)
-theme_set(
-	theme_bw() + 
-	theme(
-		legend.position = "top",
-		panel.grid.minor = element_blank(),
-		legend.title = element_blank()
-	)
-)
 ```
 
 ```{julia julia-setup, include=FALSE}
@@ -75,25 +69,6 @@ Looking at a sample of 25 disease trajectories, we can plot sensitivity as
 function of viral load for an $\operatorname{LOD}$ of $1e5$ (just below infectivity), 
 and $\beta_{e\operatorname{VL}} = 1.0, \beta_u = 0.5, c = -9.0$.
 The typical ($U=0$) sensitivity curve is then given by the following plot. 
-
-```{r typical-sensitivity}
-tibble(
-		`viral load` = 10^seq(0, 11, length.out = 1000),
-		sensitivity = 1 / (1 + exp(-(
-			log(pmax(0, `viral load` - 1e5), 10) - 9
-		))) * if_else(`viral load` >= 1e5, 1, 0)
-	) %>%
-	ggplot() +
-		aes(`viral load`, sensitivity, group = `viral load` <= 1e5) +
-		geom_line() +
-		geom_vline(xintercept = 1e5) +
-		scale_x_log10() + 
-		scale_y_continuous("sensitivity", limits = c(0, 1)) +
-		labs(
-			caption = "Sensitivity as function of viral load for u = 0; vertical line indicates LOD."
-		)
-```
-
 Sampling a few infected individuals with their respective random effects from
 the Larremore disease model yields the following viral load trajectories 
 (these are independent of the respective random effect $u$).
@@ -118,59 +93,56 @@ tbl_status = get_status_logs(individuals)
 ```
 
 ```{r extract-results}
+u <- julia_eval("[ind.dt.u for ind in individuals]")
 tbl_tests <- as_tibble(julia_eval("tbl_tests"))
 tbl_status <- as_tibble(julia_eval("tbl_status"))
 ```
 
-```{r plot-vl, warning=FALSE}
-tbl_status %>%
-	mutate(
-		symptomatic = factor(symptomatic, levels = c(FALSE, TRUE), labels = c("non-symptomatic", "symptomatic"))
+```{r plot-sensitivity}
+sens <- function(vl, u) {
+	1 / (1 + exp(-(
+		log(pmax(0, vl - 1e5), 10) + .5 * u - 9
+	))) * if_else(vl >= 1e5, 1, 0)
+}
+
+tbl_typical_sensitivity_curve <- tibble(
+		u = 0,
+		`viral load` = 10^seq(0, 11, length.out = 1000),
+		sensitivity = sens(`viral load`, 0)
+	)
+
+tbl_individual_sensitivity_curves <- expand_grid(
+		u, 
+		`viral load` = 10^seq(0, 11, length.out = 1000),
 	) %>%
-	ggplot() +
-		aes(day, viral_load) +
-		geom_hline(yintercept = 1e5) +
-	 	geom_hline(yintercept = 1e6, color = "gray") +
-		geom_bar(aes(fill = symptomatic), stat = "identity", alpha = .66) +
-		scale_y_log10() +
-		facet_wrap(~uuid) +
-		theme(
-			strip.text = element_blank(),
-			strip.background = element_blank(),
-			panel.grid = element_blank()
-		) + 
-		labs(
-			y = "viral load",
-			caption = "Random sample of viral load trajectories with symptom status; black line indicates LOD; gray line indicates infectivity threshold."
-		)
+	mutate(
+		sensitivity = sens(`viral load`, u)
+	)
+
+plt <- ggplot(tbl_individual_sensitivity_curves) +
+	aes(`viral load`, sensitivity, group = interaction(u, `viral load` <= 1e5)) +
+	geom_line(alpha = .33) +
+	geom_line(data = tbl_typical_sensitivity_curve, color = "blue", size = 1.1) +
+	geom_vline(xintercept = 1e5) +
+	scale_x_log10() + 
+	scale_y_continuous("sensitivity", limits = c(0, 1)) +
+	labs(
+		caption = "'Typical' (u = 0, blue) and sampled individual sensitivity functions; vertical line indicates LOD."
+	) +
+	theme(
+		panel.grid = element_blank()
+	)
+save_plot(plt, "sensitivity")
+print(plt)
 ```
 
 For each individual, the random effect $u$ slightly shifts the sensitivity curve.
 This can easily be seen when joining the sensitivity-viral load points of each 
 individual between time points.
 
-```{r plot-sensitivity-individual, warning=FALSE}
-tbl_tests %>%
-	arrange(uuid, viral_load) %>%
-	ggplot() +
-		aes(viral_load, probability_positive, group = uuid) +
-		geom_line(alpha = .33) +
-		scale_x_log10() +
-		theme(
-			strip.text = element_blank(),
-			strip.background = element_blank(),
-			panel.grid = element_blank()
-		) + 
-		labs(
-			x = "viral load",
-			y = "sensitivity",
-			caption = "Corresponding individual sensitivity curves."
-		)
-```
-
 If the random effect is reduced to $\beta_{u}=0$ these curves align and reduce
 to the 'typical' curve for $u=0$ depicted above.
-The addition of the random effect means that the sensitivty curve for each individual
+The addition of the random effect means that the sensitivity curve for each individual
 is either consistently lower or higher than the typical curve.
 This in turn increases the temporal correlation of subsequent tests within the
 same individual.
@@ -180,7 +152,7 @@ The absolute value of the infection probability very much depends on the
 chosen infectivity constant $\gamma$ within the Larremore disease model.
 
 ```{r plot-test-results}
-tbl_tests %>%
+plt <- tbl_tests %>%
 	left_join(
 		tbl_status %>%
 			select(uuid, day, infection_probability),
@@ -205,8 +177,10 @@ tbl_tests %>%
 		) + 
 		labs(
 			y = "",
-			caption = "Vertical gray bars correspond to positive test results."
+			caption = "Positive test- and and infection probability over time; vertical bars = positive test (under daily testing)."
 		)
+save_plot(plt, "sensitivity-infectivity-test-results")
+print(plt)
 ```
 
 Yet another way of visualizing the correlation between infectivity and 
@@ -214,7 +188,7 @@ test-sensitivity is by plotting each individuals infection and positive-test
 probabilities in over time in a state-space diagram.
 
 ```{r plot-phase-diagram}
-tbl_tests %>%
+plt <- tbl_tests %>%
 	left_join(
 		tbl_status %>%
 			select(uuid, day, infection_probability),
@@ -224,7 +198,8 @@ tbl_tests %>%
 	ggplot() +
 		aes(infection_probability, probability_positive) +
 		geom_point(aes(color = uuid)) +
-		geom_line(aes(group = uuid), alpha = .2) +
+		geom_line(aes(color = uuid), alpha = .33) +
+		coord_fixed(xlim = c(0, 1), ylim = c(0, 1)) +
 		theme(
 			strip.text = element_blank(),
 			strip.background = element_blank(),
@@ -233,11 +208,13 @@ tbl_tests %>%
 		labs(
 			x = "infection probability",
 			y = "probability of positive test result",
-			caption = "Color corresponds to individuals."
+			caption = "Scatterplot of positive test- and infection probabilites; color corresponds to individuals."
 		) +
 		theme(
 			legend.position = "none"
 		)
+save_plot(plt, "sensitivity-vs-infectivity")
+print(plt)
 ```
 
 

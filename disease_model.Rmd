@@ -10,6 +10,8 @@ bibliography: references.bib
 library(JuliaCall)
 library(tidyverse)
 
+source("util.R")
+
 knitr::opts_chunk$set(
 	cache = TRUE,
 	echo = FALSE,
@@ -18,14 +20,6 @@ knitr::opts_chunk$set(
 )
 
 set.seed(42)
-theme_set(
-	theme_bw() + 
-	theme(
-		legend.position = "top",
-		panel.grid.minor = element_blank(),
-		legend.title = element_blank()
-	)
-)
 ```
 
 ```{julia julia-setup, include=FALSE}
@@ -127,7 +121,7 @@ using the reproduction number
 
 We sample 16 example VL-trajectories.
 
-```{julia, results="hide"}
+```{julia sample-trajectories, results="hide"}
 dm = LarremoreModel(
     0.75, # fraction symptomatic
     3.0, 2.5, 3.5, # onset height and delay
@@ -146,12 +140,12 @@ steps!.(inds, 45)
 tbl_status = get_status_logs(inds)
 ```
 
-```{r}
+```{r load-tbl-status}
 tbl_status <- as_tibble(julia_eval("tbl_status"))
 ```
 
-```{r, warning=FALSE, fig.height=7}
-tbl_status %>%
+```{r plot-vl-trajectories, warning=FALSE, fig.height=7}
+plt <- tbl_status %>%
 	mutate(
 		symptomatic = factor(symptomatic, levels = c(FALSE, TRUE), labels = c("non-symptomatic", "symptomatic"))
 	) %>%
@@ -169,14 +163,16 @@ tbl_status %>%
 		labs(
 			caption = "Random sample of VL trajectories with symptom status; black line indicates infectivity threshold."
 		)
+save_plot(plt, "vl-trajectories")
+print(plt)
 ```
 
 The corresponding trajectories of infection probabilities are given below.
 The absolute height of these depends heavily on the infectivity parameter 
 $\gamma$ which needs to be calibrated.
 
-```{r, warning=FALSE, fig.height=7}
-tbl_status %>%
+```{r plot-infection-probabilities, warning=FALSE, fig.height=7}
+plt <- tbl_status %>%
 	mutate(
 		symptomatic = factor(symptomatic, levels = c(FALSE, TRUE), labels = c("non-symptomatic", "symptomatic"))
 	) %>%
@@ -192,6 +188,8 @@ tbl_status %>%
 		labs(
 			caption = "Corresponding infection probabilities per risk-contact; with symptom status."
 		)
+save_plot(plt, "infection-probability-trajectories")
+print(plt)
 ```
 
 

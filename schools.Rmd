@@ -12,26 +12,20 @@ library(tidyverse)
 library(tidygraph)
 library(ggraph)
 
+source("util.R")
+
 knitr::opts_chunk$set(
 	cache = TRUE,
 	echo = FALSE,
 	fig.width = 9,
 	fig.height = 9/1.61
 )
-
-theme_set(
-	theme_bw() + 
-	theme(
-		legend.position = "top",
-		panel.grid.minor = element_blank(),
-		legend.title = element_blank()
-	)
-)
 ```
 
 ```{julia julia-setup, include=FALSE}
 using Distributed, Pkg
 Pkg.activate(".julia")
+Pkg.precompile()
 using cov19sim
 addprocs(Sys.CPU_THREADS)
 @everywhere begin 
@@ -62,11 +56,15 @@ For all policies, we assume that a 100% sensitive and specific PCR test is
 available (e.g., via repeated PCR testing).
 
 
-## Current Government Policy (default)
+## Symptomatic Isolation (default)
 
 The current default policy (after reopening of schools) is to rely on symptomatic
-isolation of any pupil with symptoms and the entire corresponding bubble.
-We assume that all individuals isolate for 14 days.
+isolation of any pupil with symptoms.
+The symptomatic pupil goes in isolation directly and is PCR tested.
+We assume a turnaround of 2 days for the PCR test. 
+Once the test result becomes available, the pupil either returns (negative)
+or stays in isolation for another 8 days (total of 10) and all other
+members of the same bubble also isolate for 8 days (positive).
 
 
 ## Extended Weekend
@@ -153,9 +151,9 @@ function sample_school(gamma, schooldays, policy)
 	    pr_meet_bubble = 0.9,
 	    pr_meet_class = 0.33,
 	    pr_meet_school = 1/251,
-	    policy_bubble = DoNothing(),
+	    policy_bubble = policy,
 	    policy_class = DoNothing(),
-	    policy_school = policy,
+	    policy_school = DoNothing(),
 	    meeting_days = schooldays,
 	    disease_model = dm,
 	    pr_unrelated_symptoms = 0.01
@@ -166,14 +164,14 @@ lfd = LogGLMTest("lfd", 1e5, 1.0, .5, -9.0, .997)
 
 tbl_policies = DataFrame(
 	name = ["default", "extended weekend", "regular screening", "test & release"],
-	schooldays = [collect(0:4), collect(0:2), collect(0:4), collect(0:4)],
+	schooldays = [collect(0:4), collect(0:3), collect(0:4), collect(0:4)],
 	policy = [
-		SymptomaticIsolation(14, true),
-		SymptomaticIsolation(14, true),
-		RegularScreening(lfd; isolate_all = false, test_weekdays = [0]),
+		SymptomaticIsolation(2, 8),
+		SymptomaticIsolation(2, 8),
+		RegularScreening(lfd; isolate_all = false, test_weekdays = [0], pcr_turnaround = 2, isolation_duration = 8),
 		DynamicScreening(lfd,
 			pcr_turnaround = 2,
-			isolation_duration = 14,
+			isolation_duration = 8,
 	    	followup_duration = 7,
 			followup_weekdays = collect(0:4)
 		)
@@ -193,21 +191,22 @@ A <- julia_eval("A")
 ```
 
 ```{r, fig.height = 9}
-ggraph(as_tbl_graph(A), "matrix") +
+plt <- ggraph(as_tbl_graph(A), "matrix") +
 	geom_edge_tile(aes(fill = weight)) + 
 	scale_edge_fill_continuous(
 		"", 
 		low = "#dddddd", high = "#000000", na.value = "white",
 		limits = c(0, NA_real_)
 	) +
-	coord_fixed() +
-	theme_graph() +
+	coord_fixed(expand = FALSE) +
 	theme(
-		legend.position = "top"
+		legend.position = "right"
 	) +
 	labs(
-		caption = "Adjacency matrix of the proposed population model;\r\nconnection strength is given in expected pairwise daily risk contacts across all shared groups."
+		caption = "Adjacency matrix of school population;\r\nconnection strength is 'expected pairwise daily risk contacts' (across all shared groups)."
 	)
+save_plot(plt, "adjacency-matrix")
+print(plt)
 ```
 
 
@@ -255,10 +254,15 @@ tbl_r0 <- tbl_r0 %>%
 	group_by(gamma, uuid_a) %>%
 	summarize(r0 = sum(infected_other), .groups = "drop")
 
-ggplot(tbl_r0) +
+plt <- ggplot(tbl_r0) +
 	aes(gamma, r0) +
 	geom_point() +
-	geom_smooth(method = "glm", formula = y ~ x, method.args = list(family = "poisson"))
+	geom_smooth(method = "glm", formula = y ~ x, method.args = list(family = "poisson")) +
+	labs(
+		caption = "Fitted Poisson regression for r-zero vs. infectivity."
+	)
+save_plot(plt, "calibrating-infectivity")
+print(plt)
 ```
 
 An $r_0$ of less than $1$ in a school environment under only symptomatic self
@@ -343,8 +347,15 @@ select!(tbl_results, Not([:policy, :schooldays, :id]))
 tbl_results <- as_tibble(julia_eval("tbl_results"))
 ```
 
-```{r plot-simulation-results, fig.height=8}
-tbl_results %>%
+```{r plot-simulation-results}
+plt <- tbl_results %>%
+	select(-mean_daily_pp_contacts, -std_daily_infectious) %>% 
+	rename(
+		`mean infectious pupils (daily)` = mean_daily_infectious,
+		`infected pupils (cumulative)` = n_infected,
+		`required PCR tests (cumulative)` = n_pcr_tests,
+		`schooldays missed (cumulative)` = workdays_missed
+	) %>% 
 	pivot_longer(-c(r0, gamma, iter, name), names_to = "quantity") %>%
 	ggplot() +
 		geom_boxplot(
@@ -354,9 +365,15 @@ tbl_results %>%
 		facet_wrap(
 			~quantity,
 			scales = "free",
-			# labeller = labeller(function(r0) sprintf("r-zero: %s", r0))
+			nrow = 2
 		) +
-		labs(x = "r zero", y = "")
+		labs(
+			x = "r zero", 
+			y = "",
+			caption = "Boxplots of the performance distribution (100 resamples) per r-zero and policy; outliers not plotted."
+		)
+save_plot(plt, "results")
+print(plt)
 ```
 
 

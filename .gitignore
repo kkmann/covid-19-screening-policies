@@ -5,6 +5,8 @@
 .Rprofile
 
 _site
+site_libs
+figures
 *_cache
 *_files
 *.html

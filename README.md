@@ -1,3 +1,5 @@
+![build & deploy site](https://github.com/kkmann/covid-19-screening-policies/workflows/build%20&%20deploy%20site/badge.svg)
+
 # Covid-19 Screening Policy Evaluation in Small Populations
 
 **Work In Progress!**

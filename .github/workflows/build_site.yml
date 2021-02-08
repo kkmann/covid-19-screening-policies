@@ -14,10 +14,14 @@ jobs:
         os: [ubuntu-20.04]
         r: ['release']
         rspm: ["https://packagemanager.rstudio.com/cran/__linux__/focal/latest"]
-
+    env:
+      RENV_PATHS_ROOT: ~/.local/share/renv
     steps:
       - name: check out repository
         uses: actions/checkout@v2
+      - name: install system dependencies
+        run: |
+          sudo apt install libcurl4-openssl-dev libssl-dev libxml2-dev
       - name: install julia
         uses: julia-actions/setup-julia@v1
         with:
@@ -31,22 +35,18 @@ jobs:
           r-version: ${{ matrix.config.r }}
       - name: install pandoc 
         uses: r-lib/actions/setup-pandoc@master
-      - name: query R dependencies
-        run: |
-          writeLines(sprintf("R-%i.%i", getRversion()$major, getRversion()$minor), ".github/R-version")
-        shell: Rscript {0}
-      - name: cache R packages
-        uses: actions/cache@v2
+      - name: Cache R packages
+        uses: actions/cache@v1
         with:
-          path: ${{ env.R_LIBS_USER }}
-          key: ${{ runner.os }}-${{ hashFiles('.github/R-version') }}-1-${{ hashFiles('renv.lock') }}
-          restore-keys: ${{ runner.os }}-${{ hashFiles('.github/R-version') }}-1-
-      - name: install system dependencies
+          path: ${{ env.RENV_PATHS_ROOT }}
+          key: ${{ runner.os }}-renv-${{ hashFiles('**/renv.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-renv-
+      - name: Restore packages
+        shell: Rscript {0}
         run: |
-          sudo apt install libcurl4-openssl-dev libssl-dev libxml2-dev
-      - name: install R dependencies
-        run: |
-          Rscript -e 'source("renv/activate.R"); renv::restore(prompt = FALSE)'
+          if (!requireNamespace("renv", quietly = TRUE)) install.packages("renv")
+          renv::restore()
       - name: build site
         if: ${{ github.ref == 'refs/heads/main' }}
         run: |

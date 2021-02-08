@@ -259,6 +259,7 @@ plt <- ggplot(tbl_r0) +
 	geom_point() +
 	geom_smooth(method = "glm", formula = y ~ x, method.args = list(family = "poisson")) +
 	labs(
+		x = expression(gamma),
 		caption = "Fitted Poisson regression for r-zero vs. infectivity."
 	)
 save_plot(plt, "calibrating-infectivity")

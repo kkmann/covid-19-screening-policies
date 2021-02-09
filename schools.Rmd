@@ -135,7 +135,7 @@ infection per week on average.
 ```{julia define-population, results="hide"}
 @everywhere begin 
 
-function sample_school(gamma, schooldays, policy)
+function sample_school(gamma, policy)
 	dm = LarremoreModel(
 		gamma;
 	    frac_symptomatic = 0.5,
@@ -154,7 +154,7 @@ function sample_school(gamma, schooldays, policy)
 	    policy_bubble = policy,
 	    policy_class = DoNothing(),
 	    policy_school = DoNothing(),
-	    meeting_days = schooldays,
+	    meeting_days = collect(0:4),
 	    disease_model = dm,
 	    pr_unrelated_symptoms = 0.01
     )
@@ -163,34 +163,26 @@ end
 lfd = LogGLMTest("lfd", 1e5, 1.0, .5, -9.0, .997)
 
 tbl_policies = DataFrame(
-	name = ["default", "extended weekend", "regular screening", "test & release"],
-	schooldays = [collect(0:4), collect(0:3), collect(0:4), collect(0:4)],
+	name = ["default", "extended weekend", "regular screening", "test & release", "50:50 split"],
 	policy = [
-		SymptomaticIsolation(2, 8),
-		SymptomaticIsolation(2, 8),
+		SymptomaticIsolation(pcr_turnaround = 2, isolation_duration = 2),
+		SymptomaticIsolation(pcr_turnaround = 2, isolation_duration = 2, isolation_weekdays = [3,4]),
 		RegularScreening(lfd; isolate_all = false, test_weekdays = [0], pcr_turnaround = 2, isolation_duration = 8),
 		DynamicScreening(lfd,
 			pcr_turnaround = 2,
 			isolation_duration = 8,
 	    	followup_duration = 7,
 			followup_weekdays = collect(0:4)
-		)
+		),
+		SplitGroup(a_days = [0, 2], b_days = [1, 3]; pcr_turnaround = 2, isolation_duration = 8)
 	]
 )
 
 end # @everywhere
 ```
 
-```{julia, results="hide"}
-school = sample_school(.033, collect(0:4), DoNothing())
-A = get_adjacency_matrix(school)
-```
-
-```{r}
-A <- julia_eval("A")
-```
-
-```{r, fig.height = 9}
+```{r plot-adjacency-matrix}
+A <- julia_eval("get_adjacency_matrix(sample_school(.033, DoNothing()))")
 plt <- ggraph(as_tbl_graph(A), "matrix") +
 	geom_edge_tile(aes(fill = weight)) + 
 	scale_edge_fill_continuous(
@@ -222,12 +214,12 @@ population is simulated for 21 days.
 A Poisson regression can then be used to obtain $\gamma$ as function of the
 desired $r_0$.
 
-```{julia, results="hide"}
+```{julia generate-calibration-data, results="hide"}
 @everywhere begin
 
 function f(gamma)
     school = sample_school(
-    	gamma, tbl_policies[1, :schooldays], tbl_policies[1, :policy]
+    	gamma, tbl_policies[1, :policy]
     )
     infect!.(school.individuals[1])
     steps!(school, 21)
@@ -245,11 +237,11 @@ tbl_tmp = vcat(pmap(f, tbl_r0[!, :gamma])...)
 tbl_r0 = leftjoin(tbl_r0, tbl_tmp; on = :gamma)
 ```
 
-```{r}
+```{r get-calibration-data}
 tbl_r0 <- as_tibble(julia_eval("tbl_r0"))
 ```
 
-```{r}
+```{r plot-calibration-data}
 tbl_r0 <- tbl_r0 %>%
 	group_by(gamma, uuid_a) %>%
 	summarize(r0 = sum(infected_other), .groups = "drop")
@@ -270,7 +262,7 @@ An $r_0$ of less than $1$ in a school environment under only symptomatic self
 isolation is highly unlikely and thus considered the best-case-scenario.
 We then investigate the impact of different r zero values up to $r_0=5$.
 
-```{r}
+```{r define-calibration-function}
 fit <- glm(r0 ~ gamma, family = "poisson", data = tbl_r0)
 infectivity <- function(r0) {
 	f <- function(gamma) as.numeric(predict(fit, newdata = tibble(gamma = gamma), type = "response"))
@@ -285,16 +277,9 @@ tbl_scenarios <- tibble(
 	) %>%
 	expand_grid(
 		iter = 1:100,
-		name = c("default", "extended weekend", "regular screening", "test & release")
+		name = c("default", "extended weekend", "regular screening", "test & release") #, "50:50 split")
 	)
 julia_assign("tbl_scenarios", as.data.frame(tbl_scenarios))
-# tbl_scenarios %>%
-# 	group_by(r0, name) %>%
-# 	summarize(
-# 		resamples = n(),
-# 		.groups = "drop"
-# 	) %>%
-# 	knitr::kable(caption = "Considered infectivity scenarios.")
 ```
 
 
@@ -318,8 +303,8 @@ and the average daily number of contacts might all be of interest as well.
 # join with actual policy definitions
 tbl_scenarios = leftjoin(tbl_scenarios, tbl_policies, on = :name)
 
-@everywhere function evaluate_school(gamma, schooldays, policy)
-	school = sample_school(gamma, schooldays, policy)
+@everywhere function evaluate_school(gamma, policy)
+	school = sample_school(gamma, policy)
 	for i in 1:(12*7)
 		for indv in school.individuals
 			if rand(Bernoulli(1/length(school.individuals)/7))
@@ -336,12 +321,11 @@ tbl_results = hcat(
 	vcat(pmap(
 		evaluate_school,
 		tbl_scenarios[!, :gamma],
-		tbl_scenarios[!, :schooldays],
 		tbl_scenarios[!, :policy]
 	)...)
 )
 # deselect complex columns, don't need ID
-select!(tbl_results, Not([:policy, :schooldays, :id]))
+select!(tbl_results, Not([:policy, :id]))
 ```
 
 ```{r retrieve-simulation-results}

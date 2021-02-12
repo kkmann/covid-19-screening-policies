@@ -10,4 +10,4 @@ output: html_document
 
 **this website is work in progress!**
 
-;ake sure to check out the github source at https://github.com/kkmann/covid-19-screening-policies
+Check out the github source at https://github.com/kkmann/covid-19-screening-policies

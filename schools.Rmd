@@ -11,8 +11,9 @@ library(JuliaCall)
 library(tidyverse)
 library(tidygraph)
 library(ggraph)
+library(pscl)
 
-source("util.R")
+source("code/util.R")
 
 knitr::opts_chunk$set(
 	cache = TRUE,
@@ -23,15 +24,22 @@ knitr::opts_chunk$set(
 ```
 
 ```{julia julia-setup, include=FALSE}
-using Distributed, Pkg
+using Pkg
 Pkg.activate(".julia")
+Pkg.instantiate()
 Pkg.precompile()
-using cov19sim
-addprocs(Sys.CPU_THREADS)
+
+using cov19sim, DataFrames, Distributions
+
+# load environment on worker processors
+using Distributed
+addprocs(min(4, Sys.CPU_THREADS)) # memory limitations...
 @everywhere begin 
 	using Pkg
 	Pkg.activate(".julia")
 	using cov19sim, DataFrames, Distributions
+	include("code/school.jl")
+	include("code/simulate.jl")
 end
 ```
 
@@ -135,31 +143,6 @@ infection per week on average.
 ```{julia define-population, results="hide"}
 @everywhere begin 
 
-function sample_school(gamma, policy)
-	dm = LarremoreModel(
-		gamma;
-	    frac_symptomatic = 0.5,
-    	l10vl_onset = 3.0, day_onset_min = 2.5, day_onset_max = 3.5,
-    	l10vl_peak_min = 7.0, l10vl_peak_max = 11.0, peak_delay_max = 3.0, peak_delay_shape = 1.5,
-		symptom_delay_min = 0.0, symptom_delay_max = 3.0,
-    	l10vl_clearance = 6.0, clearance_delay_min = 4.0, clearance_delay_max = 9.0
-	)
-    ThreeLevelPopulation(
-    	n_per_bubble = 7,
-	    bubbles_per_class = 3,
-	    m_classes = 12,
-	    pr_meet_bubble = 0.9,
-	    pr_meet_class = 0.33,
-	    pr_meet_school = 1/251,
-	    policy_bubble = policy,
-	    policy_class = DoNothing(),
-	    policy_school = DoNothing(),
-	    meeting_days = collect(0:4),
-	    disease_model = dm,
-	    pr_unrelated_symptoms = 0.01
-    )
-end
-
 lfd = LogGLMTest("lfd", 1e5, 1.0, .5, -9.0, .997)
 
 tbl_policies = DataFrame(
@@ -182,7 +165,7 @@ end # @everywhere
 ```
 
 ```{r plot-adjacency-matrix}
-A <- julia_eval("get_adjacency_matrix(sample_school(.033, DoNothing()))")
+A <- julia_eval("get_adjacency_matrix(sample_school(.033, DoNothing(), .01, .5))")
 plt <- ggraph(as_tbl_graph(A), "matrix") +
 	geom_edge_tile(aes(fill = weight)) + 
 	scale_edge_fill_continuous(
@@ -210,16 +193,19 @@ choice of the infectivity constant $\gamma$.
 We fit a calibration curve for $\gamma$ by simulating $r_0$ for a range of
 infectivity values.
 To that end a single index case is externally infected at day $0$ and the
-population is simulated for 21 days.
-A Poisson regression can then be used to obtain $\gamma$ as function of the
-desired $r_0$.
+population is simulated for 21 days without any intervention.
+A the conditional mean of a zero-inflated negative binomial regression can then 
+be used to obtain $\gamma$ as function of the desired $r_0$.
 
 ```{julia generate-calibration-data, results="hide"}
 @everywhere begin
 
 function f(gamma)
     school = sample_school(
-    	gamma, tbl_policies[1, :policy]
+    	gamma, 
+    	DoNothing(), 
+    	.01,
+    	.5
     )
     infect!.(school.individuals[1])
     steps!(school, 21)
@@ -231,7 +217,7 @@ end
 end # @everywhere
 
 tbl_r0 = DataFrame(
-		gamma = collect(range(0, 0.15, length = 1000))
+		gamma = collect(range(0, 0.075, length = 1000))
 	)
 tbl_tmp = vcat(pmap(f, tbl_r0[!, :gamma])...)
 tbl_r0 = leftjoin(tbl_r0, tbl_tmp; on = :gamma)
@@ -246,13 +232,24 @@ tbl_r0 <- tbl_r0 %>%
 	group_by(gamma, uuid_a) %>%
 	summarize(r0 = sum(infected_other), .groups = "drop")
 
+fit <- zeroinfl(
+	formula = r0 ~ gamma | gamma, 
+	dist = "negbin", 
+	data = tbl_r0
+)
+
 plt <- ggplot(tbl_r0) +
 	aes(gamma, r0) +
-	geom_point() +
-	geom_smooth(method = "glm", formula = y ~ x, method.args = list(family = "poisson")) +
+	geom_point(alpha = 0.2, shape = 16) +
+	geom_line(
+		data = tibble(
+			gamma = seq(0, .075, length.out = 100),
+			r0 = as.numeric(predict(fit, newdata = tibble(gamma = gamma), type = "response"))
+		)
+	) +
 	labs(
 		x = expression(gamma),
-		caption = "Fitted Poisson regression for r-zero vs. infectivity."
+		caption = "Fitted zero-inflated negative binomial regression for r-zero vs. infectivity."
 	)
 save_plot(plt, "calibrating-infectivity")
 print(plt)
@@ -263,17 +260,19 @@ isolation is highly unlikely and thus considered the best-case-scenario.
 We then investigate the impact of different r zero values up to $r_0=5$.
 
 ```{r define-calibration-function}
-fit <- glm(r0 ~ gamma, family = "poisson", data = tbl_r0)
 infectivity <- function(r0) {
 	f <- function(gamma) as.numeric(predict(fit, newdata = tibble(gamma = gamma), type = "response"))
-	as.numeric(uniroot(function(x) f(x) - r0, interval = c(0, .15))$root)
+	as.numeric(uniroot(function(x) f(x) - r0, interval = c(0, .1))$root)
 }
 ```
 
 ```{r define-scenarios}
 tbl_scenarios <- tibble(
 		r0 = c(1.5, 2, 3, 5),
-		gamma = purrr::map_dbl(r0, infectivity)
+		gamma = purrr::map_dbl(r0, infectivity),
+		pr_noncovid_symptoms = 0.01,
+		frac_symptomatic = 0.5,
+		pr_external_infections = 1/12/27/7 # expected 1 per week
 	) %>%
 	expand_grid(
 		iter = 1:100,
@@ -303,11 +302,17 @@ and the average daily number of contacts might all be of interest as well.
 # join with actual policy definitions
 tbl_scenarios = leftjoin(tbl_scenarios, tbl_policies, on = :name)
 
-@everywhere function evaluate_school(gamma, policy)
-	school = sample_school(gamma, policy)
+@everywhere function evaluate_school(
+	gamma, 
+	policy, 
+	pr_noncovid_symptoms, 
+	frac_symptomatic, 
+	pr_external_infections
+)
+	school = sample_school(gamma, policy, pr_noncovid_symptoms, frac_symptomatic)
 	for i in 1:(12*7)
 		for indv in school.individuals
-			if rand(Bernoulli(1/length(school.individuals)/7))
+			if rand(Bernoulli(pr_external_infections))
 				infect!(indv)
 			end
 		end
@@ -321,7 +326,10 @@ tbl_results = hcat(
 	vcat(pmap(
 		evaluate_school,
 		tbl_scenarios[!, :gamma],
-		tbl_scenarios[!, :policy]
+		tbl_scenarios[!, :policy],
+		tbl_scenarios[!, :pr_noncovid_symptoms],
+		tbl_scenarios[!, :frac_symptomatic],
+		tbl_scenarios[!, :pr_external_infections]
 	)...)
 )
 # deselect complex columns, don't need ID
@@ -334,13 +342,14 @@ tbl_results <- as_tibble(julia_eval("tbl_results"))
 
 ```{r plot-simulation-results}
 plt <- tbl_results %>%
-	select(-mean_daily_pp_contacts, -std_daily_infectious) %>% 
+	select(-mean_daily_pp_contacts, -std_daily_infectious, 
+		   -pr_external_infections, -pr_noncovid_symptoms, -frac_symptomatic) %>%
 	rename(
 		`mean infectious pupils (daily)` = mean_daily_infectious,
 		`infected pupils (cumulative)` = n_infected,
 		`required PCR tests (cumulative)` = n_pcr_tests,
 		`schooldays missed (cumulative)` = workdays_missed
-	) %>% 
+	) %>%
 	pivot_longer(-c(r0, gamma, iter, name), names_to = "quantity") %>%
 	ggplot() +
 		geom_boxplot(
@@ -353,7 +362,7 @@ plt <- tbl_results %>%
 			nrow = 2
 		) +
 		labs(
-			x = "r zero", 
+			x = "r zero",
 			y = "",
 			caption = "Boxplots of the performance distribution (100 resamples) per r-zero and policy; outliers not plotted."
 		)

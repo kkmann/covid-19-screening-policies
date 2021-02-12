@@ -18,4 +18,4 @@ output:
   html_document:
     theme: flatly
 
-exclude: [".github", ".julia", "Makefile", "renv.lock", "renv"]
+exclude: [".github", ".julia", "Makefile", "renv.lock", "renv", "code"]

@@ -4,6 +4,7 @@ save_plot <- function(plt, name, width = 7.5, height = width*3/4, dpi = 300, ...
 	plt <- plt + ggplot2::labs(...) # allow removal of caption etc.
 	ggplot2::ggsave(sprintf("%s/%s.jpg", "figures", name), plt, 
 					width = width, height = height, dpi = dpi)
+	plt <- plt + ggplot2::labs(caption = "")  # no caption for pdf
 	ggplot2::ggsave(sprintf("%s/%s.pdf", "figures", name), plt, 
 					width = width, height = height, dpi = dpi)
 }

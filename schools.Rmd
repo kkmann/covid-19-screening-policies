@@ -11,6 +11,7 @@ library(JuliaCall)
 library(tidyverse)
 library(tidygraph)
 library(ggraph)
+library(patchwork)
 library(pscl)
 
 source("code/util.R")
@@ -33,7 +34,7 @@ using cov19sim, DataFrames, Distributions
 
 # load environment on worker processors
 using Distributed
-addprocs(min(4, Sys.CPU_THREADS)) # memory limitations...
+addprocs(min(6, Sys.CPU_THREADS)) # memory limitations...
 @everywhere begin 
 	using Pkg
 	Pkg.activate(".julia")
@@ -268,11 +269,13 @@ infectivity <- function(r0) {
 
 ```{r define-scenarios}
 tbl_scenarios <- tibble(
-		r0 = c(1.5, 2, 3, 5),
-		gamma = purrr::map_dbl(r0, infectivity),
-		pr_noncovid_symptoms = 0.01,
-		frac_symptomatic = 0.5,
-		pr_external_infections = 1/12/27/7 # expected 1 per week
+		r0 = c(1.5, 3, 5),
+		gamma = purrr::map_dbl(r0, infectivity)
+	) %>% 
+	expand_grid(
+		pr_noncovid_symptoms = .01,
+		frac_symptomatic = c(0.5, 0.8),
+		pr_external_infections = c(1, 2, 3)/12/27/7 # expected 1 per week
 	) %>%
 	expand_grid(
 		iter = 1:100,
@@ -337,36 +340,56 @@ select!(tbl_results, Not([:policy, :id]))
 ```
 
 ```{r retrieve-simulation-results}
-tbl_results <- as_tibble(julia_eval("tbl_results"))
-```
-
-```{r plot-simulation-results}
-plt <- tbl_results %>%
-	select(-mean_daily_pp_contacts, -std_daily_infectious, 
-		   -pr_external_infections, -pr_noncovid_symptoms, -frac_symptomatic) %>%
+tbl_results <- as_tibble(julia_eval("tbl_results")) %>%
 	rename(
 		`mean infectious pupils (daily)` = mean_daily_infectious,
 		`infected pupils (cumulative)` = n_infected,
 		`required PCR tests (cumulative)` = n_pcr_tests,
-		`schooldays missed (cumulative)` = workdays_missed
+		`schooldays missed (cumulative)` = workdays_missed,
+		`Pr[symptoms|no Covid]` = pr_noncovid_symptoms,
+		`Pr[ymptomatic]` = frac_symptomatic,
+		`Pr[external infection]` = pr_external_infections
+	)
+```
+
+```{r}
+tbl_results
+```
+
+```{r plot-simulation-results, fig.height=18}
+plot_outcome <- function(outcome) {
+	plt <- tbl_results %>%
+	transmute(
+		name, 
+		r0, 
+		`Pr[ymptomatic]` = sprintf("%.2f", `Pr[ymptomatic]`), 
+		`Pr[external infection]` = sprintf("%.3f", `Pr[external infection]`), 
+		iter, 
+		value = !!sym(outcome)
 	) %>%
-	pivot_longer(-c(r0, gamma, iter, name), names_to = "quantity") %>%
 	ggplot() +
 		geom_boxplot(
 			aes(x = factor(r0), color = name, y = value),
 			outlier.shape = NA
 		) +
-		facet_wrap(
-			~quantity,
-			scales = "free",
-			nrow = 2
+		facet_grid(
+			`Fraction symptomatic` ~ `Pr[external infection]`, labeller = label_both
 		) +
 		labs(
 			x = "r zero",
 			y = "",
+			title = outcome,
 			caption = "Boxplots of the performance distribution (100 resamples) per r-zero and policy; outliers not plotted."
 		)
-save_plot(plt, "results")
+	plt
+}
+plt <- plot_outcome("infected pupils (cumulative)") +
+	plot_outcome("mean infectious pupils (daily)") +
+	plot_outcome("schooldays missed (cumulative)") +
+	plot_outcome("required PCR tests (cumulative)") +
+	plot_layout(ncol = 1, guides = "collect") & theme(legend.position = 'bottom')
+	
+save_plot(plt, "results", height = 18)
 print(plt)
 ```
 

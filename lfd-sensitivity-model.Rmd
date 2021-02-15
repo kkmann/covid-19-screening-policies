@@ -31,6 +31,9 @@ seed!(42)
 ```
 
 
+$\newcommand{\vl}{\operatorname{VL}}$
+$\newcommand{\lod}{\operatorname{LOD}}$
+
 
 # Problem Statement
 
@@ -47,10 +50,10 @@ logistic model for test sensitivity.
 
 $$
 \operatorname{sensitivity}(\operatorname{VL}, u) := \operatorname{logit}^{-1}\big( 
-	\beta_{\operatorname{eVL}} \cdot \log_{10}( \operatorname{VL} - \operatorname{LOD} ) 
+	\beta_{\operatorname{eVL}} \cdot \log_{10}( \operatorname{VL} ) 
 	+ \beta_{u}\cdot u
-	+ c
-\big) \cdot \boldsymbol{1}_{\,\operatorname{VL}\, \geq\, \operatorname{LOD}}
+	+ c_{\operatorname{test}}
+\big)
 $$
 where $\operatorname{VL}$ is the viral load, $\operatorname{LOD}$ the limit of detection,
 $u$ us an individuals latent 'testing random effect' $U\sim\mathcal{N}(0,1)$,
@@ -60,27 +63,78 @@ model proposed in [@larremore2020a].
 The random effects allow a stronger temporal correlation of an individuals 
 test results as compared to a model that only relies on the latent viral load
 trajectories.
+We link the intercept to $\lod$ by imposing the constraint $\operatorname{sensitivity}(\lod, 0) = 0.001$.
 
 
 
 # Example
 
-Looking at a sample of 25 disease trajectories, we can plot sensitivity as
-function of viral load for an $\operatorname{LOD}$ of $1e5$ (just below infectivity), 
-and $\beta_{e\operatorname{VL}} = 1.0, \beta_u = 0.5, c = -9.0$.
-The typical ($U=0$) sensitivity curve is then given by the following plot. 
-Sampling a few infected individuals with their respective random effects from
-the Larremore disease model yields the following viral load trajectories 
-(these are independent of the respective random effect $u$).
+We calibrate the test sensitivity to data presented in 
+http://modmedmicro.nsms.ox.ac.uk/wp-content/uploads/2021/01/infectivity_manuscript_20210119_merged.pdf
+by screen-grabbing the Innova curve on page 22 of the PDF.
+
+```{r plot-fit}
+tbl_innova_data <- tibble(
+	`viral load` = 10^(2:7),
+	sensitivity = 1 - (c(621, 521, 344, 207, 144, 123) - 114) / (684 - 114)
+)
+
+sens <- function(vl, u = 0, beta_vl = 0.76, beta_u = 0.0, c = -3.81) {
+	1 / (1 + exp(-(
+		beta_vl*log(vl, 10) + beta_u*u + c
+	)))
+}
+
+ff <- function(x) {
+	sum( 
+		(tbl_innova_data$sensitivity - 
+		  	purrr::map_dbl(
+		  		tbl_innova_data$`viral load`, 
+		  		~sens(., u = 0, beta_vl = x[1], beta_u = 0, c = x[2])) 
+		)^2
+	)
+}
+
+res <- optim(
+	c(.76, -5), ff,
+	method = "L-BFGS-B",
+	lower = c(.1, -10),
+	upper = c(2.5, 5),
+	control = list(maxit = 1e4)
+)
+
+julia_assign("beta_vl", res$par[1])
+julia_assign("intercept", res$par[2])
+
+plt <- tibble(
+		`viral load` = 10^seq(0, 11, length.out = 1000),
+		sensitivity = sens(`viral load`, u = 0, beta_vl = res$par[1], beta_u = 0.0, c = res$par[2])
+	) %>%
+	ggplot() +
+		aes(`viral load`, sensitivity) +
+		geom_line() +
+		geom_point(data = tbl_innova_data) +
+		scale_x_log10() + 
+		scale_y_continuous("sensitivity", limits = c(0, 1)) +
+		labs(
+			caption = "Fitted Innova-LFD test sensitivity to data from [Oxford manuscript]."
+		)
+save_plot(plt, "fit-sensitivity")
+print(plt)
+```
+
+Looking at a sample of 16 disease trajectories, we can plot sensitivity as
+function of viral load with the fitted Innova parameters as typical ($U=0$) 
+sensitivity curve. 
 
 ```{julia sample, results="hide"}
-dm = LarremoreModel(.1)
+dm = LarremoreModel(.25)
 
 # create individuals
 individuals = [Individual(dm, 0.0) for i in 1:16] # no chance of non-covid symptoms
 # infect them all
 infect!.(individuals)
-lfd = LogGLMTest("lfd", 1e5, 1.0, .5, -9.0, .997)
+lfd = LogRegTest("lfd", beta_vl, .5, intercept, .997)
 # simulate some days forward
 for i in 1:45
 	conduct_test!.(lfd, individuals)
@@ -99,16 +153,10 @@ tbl_status <- as_tibble(julia_eval("tbl_status"))
 ```
 
 ```{r plot-sensitivity}
-sens <- function(vl, u) {
-	1 / (1 + exp(-(
-		log(pmax(0, vl - 1e5), 10) + .5 * u - 9
-	))) * if_else(vl >= 1e5, 1, 0)
-}
-
 tbl_typical_sensitivity_curve <- tibble(
 		u = 0,
 		`viral load` = 10^seq(0, 11, length.out = 1000),
-		sensitivity = sens(`viral load`, 0)
+		sensitivity = sens(`viral load`, beta_vl = res$par[1], c = res$par[2])
 	)
 
 tbl_individual_sensitivity_curves <- expand_grid(
@@ -116,18 +164,17 @@ tbl_individual_sensitivity_curves <- expand_grid(
 		`viral load` = 10^seq(0, 11, length.out = 1000),
 	) %>%
 	mutate(
-		sensitivity = sens(`viral load`, u)
+		sensitivity = sens(`viral load`, u, beta_u = 0.25, beta_vl = res$par[1], c = res$par[2])
 	)
 
 plt <- ggplot(tbl_individual_sensitivity_curves) +
-	aes(`viral load`, sensitivity, group = interaction(u, `viral load` <= 1e5)) +
+	aes(`viral load`, sensitivity, group = u) +
 	geom_line(alpha = .33) +
 	geom_line(data = tbl_typical_sensitivity_curve, color = "blue", size = 1.1) +
-	geom_vline(xintercept = 1e5) +
 	scale_x_log10() + 
 	scale_y_continuous("sensitivity", limits = c(0, 1)) +
 	labs(
-		caption = "'Typical' (u = 0, blue) and sampled individual sensitivity functions; vertical line indicates LOD."
+		caption = "'Typical' (u = 0, blue) and sampled individual sensitivity functions."
 	) +
 	theme(
 		panel.grid = element_blank()
@@ -137,11 +184,6 @@ print(plt)
 ```
 
 For each individual, the random effect $u$ slightly shifts the sensitivity curve.
-This can easily be seen when joining the sensitivity-viral load points of each 
-individual between time points.
-
-If the random effect is reduced to $\beta_{u}=0$ these curves align and reduce
-to the 'typical' curve for $u=0$ depicted above.
 The addition of the random effect means that the sensitivity curve for each individual
 is either consistently lower or higher than the typical curve.
 This in turn increases the temporal correlation of subsequent tests within the

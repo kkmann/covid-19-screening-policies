@@ -4,9 +4,9 @@ navbar:
     - text: "Home"
       href: index.html
     - text: "Disease Model"
-      href: disease_model.html
+      href: disease-model.html
     - text: "LFD Test Model"
-      href: lfd_test.html
+      href: lfd-sensitivity-model.html
     - text: "Policy Evaluation for Reopening of Schools"
       href: schools.html
   right: 

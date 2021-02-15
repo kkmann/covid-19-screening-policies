@@ -34,10 +34,13 @@ seed!(42)
 
 # Problem Statement
 
+$\newcommand{\vl}{\operatorname{VL}}$
+$\newcommand{\lli}{\operatorname{LLI}}$
+
 This document briefly presents the disease and infection model for SARS-CoV-2
 used by Larremore and colleagues [@larremore2020a].
 The model is centered around an individual's viral load 
-(VL, measured in copies per milliliter $cp/ml$) trajectory over time.
+($\vl$, measured in copies per milliliter $\operatorname{cp}/\operatorname{ml}$) trajectory over time.
 For references justifying the choice of individual parameters, 
 please refer to the original publication.
 
@@ -45,19 +48,17 @@ please refer to the original publication.
 
 # Viral Load Model
 
-Each individual's VL trajectory is determined via a set of pivot points.
+Each individual's $\vl$ trajectory is determined via a set of pivot points.
 The ordinate of the pivot points used in the Larremore-model are given on the 
-log-10 VL scale. 
-At any point in time, an individual's log-10 VL-trajectory is determined by 
-linear interpolation of the pivot points.
+log-10 $\vl$ scale. 
+At any point in time, an individual's log-10 $\vl$-trajectory is determined by 
+linear interpolation of the pivot points:
 
-The pivot points are:
+1. **Start of fast exponential growth phase:** $(t_1, 3)$ 
+2. **Peak log-10 VL:** $\big(t_2, \log_{10}(\vl_{peak})\big)$
+3. **Clearance point (point of non-infectiousness):** $(t_3, 6)$
 
-1. **Start of fast exponential growth phase:** $(t_1, 1e3)$ 
-2. **Peak log-10 VL:** $\big(t_2, \log_{10}(\operatorname{VL}_{peak})\big)$
-3. **Clearance point (point of non-infectiousness):** $(t_3, 1e6)$
-
-To sample a full VL-trajectory, it is first determined whether the trajectory
+To sample a full $\vl$-trajectory, it is first determined whether the trajectory
 will ultimately become symptomatic by sampling from a Bernoulli distribution with
 a probability $\rho_{sympt.}$ for becoming symptomatic.
 
@@ -66,29 +67,27 @@ after the infection time $t=0$.
 
 The second pivot points delay with respect to $t_1$ is sampled as
 $t_2 - t_1 = 0.5 + \min(3, X)$ where $X\sim \operatorname{Gamma}(1.5)$.
-The corresponding ordinate, peak log-10 VL  $\log_{10}(\operatorname{VL}_{peak})$, 
+The corresponding ordinate, peak log-10 $\vl$  $\log_{10}(\vl_{peak})$, 
 is sampled uniformly between $[7, 11]$.
 
 The timing of the third pivot $t_3$, the clearance point of non-infectiousness, 
 is sampled conditional on whether or not an individual is symptomatic.
-Log-10 VL at clearance (= non-infectiousness) is defined as $1e6$ 
+Log-10 $\vl$ at clearance (= non-infectiousness) is defined as $1e6$ 
 in accordance with the literature cited in [@larremore2020a].
 For asymptomatic cases, $t_3 - t_2\sim\operatorname{Unif}(4, 9)$. 
 For symptomatic cases, a symptom onset time with delay 
 $t_{symptoms}-t_2\sim \operatorname{Unif}(0, 3)$ 
 is sampled to determine the time to symptom onset and this symptom onset delay 
 is added to $t_3$.
-This implies that symptomatic cases have a slower clearance of their peak VL
-but the same peak VL.
+This implies that symptomatic cases have a slower clearance of their peak $\vl$
+but the same peak $\vl$.
 
-Although not noted in [@larremore2020a] we set the initial log-10 VL to $0$ at 
-$t=0$ and extrapolate linearly after $t_3$ until the log-10 VL reaches 0 again.
-Outside of this interval, the log-10 VL is $-\infty$, i.e., VL is $0$.
+Although not noted in [@larremore2020a] we set the initial log-10 $\vl$ to $0$ at 
+$t=0$ and extrapolate linearly after $t_3$ until the log-10 $\vl$ reaches 0 again.
+Outside of this interval, the log-10 $\vl$ is $-\infty$, i.e., $\vl$ is $0$.
 
 We then modify the above model slightly to fit it into a simulation framework
 with discrete daily time scale. 
-We additionally sample an 'infection time' $t_0\sim\operatorname{Unif}(-16.5/24, 7.5/24)$
-and add it to $t_1$.
 This models the fact that the infection is occurring anywhere from 07:30AM 
 on the preceding day to 07:30AM of the current day 
 (test & isolation / meetings are assumed to take place at 07:30AM).
@@ -97,24 +96,29 @@ on the preceding day to 07:30AM of the current day
 # Infection Submodel
 
 The probability that an individual infects a susceptible other individual during
-an encounter is modeled as function of the individuals VL.
+an encounter is modeled as function of the individuals $\vl$.
 We assume that individuals who already went though an infection are no longer
 susceptible (short term immunity).
-In [@larremore2020a], different functional forms for the relationship between VL
+In [@larremore2020a], different functional forms for the relationship between $\vl$
 and the probability to infect are considered but the main results refer to a 
-model where the infectivity is modeled as proportional to the excess 
-log-10 VL over the infectivity threshold of $1e6$ 
-(Larremore et al. use $\log_{10}(\operatorname{VL}) - 6 \neq \log_{10}(\operatorname{VL} - 1e6)$
-although the latter seems to be closer to their verbal description).
+model where the infectivity is modeled as proportional to the log-10 $\vl$ 
+over the infectivity threshold of $\lli=1e6$ although the latter seems 
+to be closer to their verbal description).
 Confining this to the valid interval $[0,1]$ yields
 $$
-\operatorname{Pr}\big[\text{A infect B at $t$} \,|\, \text{B susceptible at $t$} \big] = \max\big(0, \min\big(1, \quad \gamma \cdot \big(\log_{10}\big(\operatorname{VL}_A(t)\big) - 6\big)\quad \big)\big)
+\operatorname{Pr}\big[\text{A infect B at $t$} \,|\, \text{B susceptible at $t$} \big] = \max\big(0, \min\big(1, \quad \gamma \cdot \big(\log_{10}\big(\vl_A(t)\big) - \log_{10}(\lli)\big)\quad \big)\big)
 $$
 where $\gamma$ is the infectivity constant and only free parameter of the 
 infection submodel.
 Within a population model, the infectivity can then be calibrated, e.g.,
 using the reproduction number 
 (see article 'Comparing Test and Isolation Policies for Schools under a Larremore et al. Disease Model').
+
+Alternatively, we consider a logistic regression model
+$$
+\operatorname{Pr}\big[\text{A infect B at $t$} \,|\, \text{B susceptible at $t$} \big] = \operatorname{logit}^{-1}\big(\gamma \, \log_{10}(\vl) + c_{\operatorname{infectvity}}\big) \ .
+$$
+We link the intercept to $\lli$ by imposing the constraint $f_{\operatorname{log-reg}}(\lli + 1) = 0.001$, i.e., $c_{\operatorname{infectvity}} = \log(0.001/0.999) - \gamma\,\log_{10}(\lli)$.
 
 
 # Example Trajectories
@@ -123,12 +127,12 @@ We sample 16 example VL-trajectories.
 
 ```{julia sample-trajectories, results="hide"}
 dm = LarremoreModel(
-    0.75, # fraction symptomatic
-    3.0, 2.5, 3.5, # onset height and delay
-    7.0, 11.0, 3.0, 1.5, # peak
-    0.0, 3.0, # symptoms
-    6.0, 4.0, 9.0, # clearance
-    .25 # infectivity
+	0.25; # gamma
+    frac_symptomatic = 0.75,
+    l10vl_onset = 3.0, day_onset_min = 2.5, day_onset_max = 3.5,
+    l10vl_peak_min = 7.0, l10vl_peak_max = 11.0, peak_delay_max = 3.0, peak_delay_shape = 1.5,
+	symptom_delay_min = 0.0, symptom_delay_max = 3.0,
+    l10vl_clearance = 6.0, clearance_delay_min = 4.0, clearance_delay_max = 9.0
 )
 
 # create individuals
@@ -167,7 +171,8 @@ save_plot(plt, "vl-trajectories")
 print(plt)
 ```
 
-The corresponding trajectories of infection probabilities are given below.
+The corresponding trajectories of infection probabilities under the original
+Larremore model and the logistic regression model are given below.
 The absolute height of these depends heavily on the infectivity parameter 
 $\gamma$ which needs to be calibrated.
 
@@ -186,11 +191,60 @@ plt <- tbl_status %>%
 			strip.background = element_blank()
 		) + 
 		labs(
-			caption = "Corresponding infection probabilities per risk-contact; with symptom status."
+			caption = "Corresponding infection probabilities per risk-contact under the Larremore model;\r\ninfectivity constant of 0.25."
 		)
 save_plot(plt, "infection-probability-trajectories")
 print(plt)
 ```
+
+```{julia modify-trajectories, results="hide"}
+seed!(42)
+
+dm = LarremoreModel(
+	LogRegInfectionModel(2.5, 1e6);
+    frac_symptomatic = 0.75,
+    l10vl_onset = 3.0, day_onset_min = 2.5, day_onset_max = 3.5,
+    l10vl_peak_min = 7.0, l10vl_peak_max = 11.0, peak_delay_max = 3.0, peak_delay_shape = 1.5,
+	symptom_delay_min = 0.0, symptom_delay_max = 3.0,
+    l10vl_clearance = 6.0, clearance_delay_min = 4.0, clearance_delay_max = 9.0
+)
+
+# create individuals
+inds = [Individual(dm, 0.01) for i in 1:16] # .01 chance of non-covid symptoms
+# infect them all
+infect!.(inds)
+# simulate some days forward
+steps!.(inds, 45)
+tbl_status = get_status_logs(inds)
+```
+
+```{r load-modified-tbl-status}
+tbl_status <- as_tibble(julia_eval("tbl_status"))
+```
+
+```{r plot-logreg-infection-probabilities, warning=FALSE, fig.height=7}
+plt <- tbl_status %>%
+	mutate(
+		symptomatic = factor(symptomatic, levels = c(FALSE, TRUE), labels = c("non-symptomatic", "symptomatic"))
+	) %>%
+	ggplot() +
+		aes(day, infection_probability) +
+		geom_bar(aes(fill = symptomatic), stat = "identity", alpha = .66) +
+		ylab("infection probability") +
+		facet_wrap(~uuid) +
+		theme(
+			strip.text = element_blank(),
+			strip.background = element_blank()
+		) + 
+		labs(
+			caption = "Corresponding infection probabilities  per risk-contact under a logistic regression model;\r\ninfectivity constant of 2.5."
+		)
+save_plot(plt, "infection-probability-trajectories")
+print(plt)
+```
+
+A logistic regression model allows more heterogeneous infection probabilities 
+(either high or low).
 
 
 # References

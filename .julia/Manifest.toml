@@ -202,9 +202,9 @@ uuid = "efe28fd5-8261-553b-a9e1-b2916fc3738e"
 version = "0.5.3+4"
 
 [[OrderedCollections]]
-git-tree-sha1 = "d45739abcfc03b51f6a42712894a593f74c80a23"
+git-tree-sha1 = "4fa2ba51070ec13fcc7517db714445b4ab986bdf"
 uuid = "bac558e1-5e72-5ebc-8fee-abe8a469f55d"
-version = "1.3.3"
+version = "1.4.0"
 
 [[PDMats]]
 deps = ["LinearAlgebra", "SparseArrays", "SuiteSparse", "Test"]
@@ -367,7 +367,7 @@ version = "0.5.3"
 
 [[cov19sim]]
 deps = ["DataFrames", "DataFramesMeta", "Distributed", "Distributions", "Documenter", "Interpolations", "Random", "Statistics", "Test", "UUIDs"]
-git-tree-sha1 = "fb5b36fb206526a322599d096efa0d71d20658d8"
+git-tree-sha1 = "6b637842db89c10c67809ff079fcd332ec3014ac"
 repo-rev = "main"
 repo-url = "https://github.com/kkmann/cov19sim"
 uuid = "7070818b-bc4a-4efc-9908-1d2131e194b1"

@@ -366,10 +366,7 @@ plt <- plot_outcome("infected pupils (cumulative)") +
 	plot_outcome("schooldays missed (cumulative)") +
 	plot_outcome("required PCR tests (cumulative)") +
 	plot_layout(ncol = 2, guides = "collect") & 
-		theme(legend.position = 'top', plot.title = element_text(hjust = 0.5)) & 
-		plot_annotation(
-			caption = "Boxplots of the performance distribution (100 resamples) per r-zero and policy; outliers not plotted."
-		)
+		theme(legend.position = 'top', plot.title = element_text(hjust = 0.5))
 	
 save_plot(plt, "results", width = 10, height = 15)
 print(plt)

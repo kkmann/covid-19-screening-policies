@@ -63,7 +63,6 @@ model proposed in [@larremore2020a].
 The random effects allow a stronger temporal correlation of an individuals 
 test results as compared to a model that only relies on the latent viral load
 trajectories.
-We link the intercept to $\lod$ by imposing the constraint $\operatorname{sensitivity}(\lod, 0) = 0.001$.
 
 
 
@@ -117,15 +116,133 @@ plt <- tibble(
 		scale_x_log10() + 
 		scale_y_continuous("sensitivity", limits = c(0, 1)) +
 		labs(
-			caption = "Fitted Innova-LFD test sensitivity to data from [Oxford manuscript]."
+			caption = "Fitted Innova-LFD test sensitivity."
 		)
 save_plot(plt, "fit-sensitivity")
 print(plt)
 ```
 
+Since we use different studies to calibrate the disease model (Larremore) and
+the test sensitivity profile, a plausibility check is in place.
+We use a third data source, the [Liverpool community testing report](https://www.liverpool.ac.uk/media/livacuk/coronavirus/Liverpool,Community,Testing,Pilot,Interim,Evaluation.pdf)
+to check the plausibility of the fitted sensitivity profile.
+The Liverpool pilot found that the test sensitivity of the Innova test in a
+practical setting was only 40%.
+The study was based on *presymptomatic* individuals.
+We can use this information by simulating a population of infected individuals
+and randomly pick a pre-symptomatic time-point with a viral load of more than 
+$10^2$ (assumed limit of detection for PCR) for each individual. 
+The mean of the corresponding distribution of viral load values should then be
+aligned with the Liverpool data.
+Since this is not the case, we introduce a scaling factor to reconcile the
+shape of the sensitivity curve found in the Oxford data with the mean sensitivity
+of the real-world experiement from Liverpool, i.e., we consider 'scaled sensitivity'
+
+\begin{align}
+\operatorname{sensitivity}'(\operatorname{VL}, u) :&= \operatorname{logit}^{-1}\big( 
+	\eta\cdot\beta_{\operatorname{eVL}} \cdot \log_{10}( \operatorname{VL} ) 
+	+ \beta_{u}\cdot u
+	+ c_{\operatorname{test}} \\
+	&= \operatorname{logit}^{-1}\big( 
+	\beta_{\operatorname{eVL}} \cdot \log_{10}\big( \operatorname{VL}^\eta \big) 
+	+ \beta_{u}\cdot u
+	+ c_{\operatorname{test}}
+\big)
+\end{align}
+
+For a sample of $100,000$ under the Larremore et al model and $\beta_u=0.5$, 
+the mean of the scaled sensitivity as function of $\eta$ is given below.
+
+```{julia sample-individuals, results="hide"}
+dm = LarremoreModel(
+	0.25; # gamma; irrelevant here
+    frac_symptomatic = 0.75,
+    l10vl_onset = 3.0, day_onset_min = 2.5, day_onset_max = 3.5,
+    l10vl_peak_min = 7.0, l10vl_peak_max = 11.0, peak_delay_max = 3.0, peak_delay_shape = 1.5,
+	symptom_delay_min = 0.0, symptom_delay_max = 3.0,
+    l10vl_clearance = 6.0, clearance_delay_min = 4.0, clearance_delay_max = 9.0
+)
+
+# create individuals
+inds = [Individual(dm, 0.0) for i in 1:1e5] # no chance of non-covid symptoms
+# infect them all
+infect!.(inds)
+# simulate some days forward
+steps!.(inds, 30)
+tbl_status = get_status_logs(inds)
+```
+
+```{r load-tbl-status}
+tbl_status <- as_tibble(julia_eval("tbl_status"))
+```
+
+```{r}
+tbl_vl <- tbl_status %>%
+	arrange(uuid, day) %>%
+	group_by(uuid) %>%
+	filter(
+		row_number() >= which(viral_load > 1e2)[1],
+		row_number() < which(symptomatic)[1]
+	) %>%
+	sample_n(1) %>%
+	ungroup() %>%
+	select(uuid, day, viral_load)
+```
+
+```{r}
+f <- function(fct) {
+	tbl_vl %>% 
+		mutate(
+			sensitivity = sens(viral_load^fct, u = 0, beta_vl = res$par[1], beta_u = 0.5, c = res$par[2])
+		) %>% 
+		pull(sensitivity) %>% 
+		summary() %>% 
+		mean()
+}
+
+res2 <- uniroot(function(x) f(x) - 0.4, interval = c(0, 1))
+
+tibble(
+	exponent = seq(0, 2, length.out = 1000),
+	`mean scaled sensitivity` = map_dbl(exponent, f)
+) %>% 
+ggplot() +
+	aes(exponent, `mean scaled sensitivity`) +
+	geom_hline(yintercept = 0.4, color = "darkgray") +
+	geom_vline(xintercept = res2$root, color = "darkgray") +
+	geom_line() +
+	xlab(expression(eta))
+```
+
+Applying the identified $\eta=`r round(res2$root, 3)`$ yields the following 
+relationship (the original control points are still plotted for reference):
+
+```{r plot-refit}
+plt <- tibble(
+		`viral load` = 10^seq(0, 11, length.out = 1000),
+		sensitivity = sens(`viral load`^(res2$root), u = 0, beta_vl = res$par[1], beta_u = 0.5, c = res$par[2])
+	) %>%
+	ggplot() +
+		aes(`viral load`, sensitivity) +
+		geom_line() +
+		geom_point(data = tbl_innova_data) +
+		scale_x_log10() + 
+		scale_y_continuous("sensitivity", limits = c(0, 1)) +
+		labs(
+			caption = "Fitted Innova-LFD test sensitivity."
+		)
+save_plot(plt, "fit-sensitivity-2")
+print(plt)
+```
+
+
 Looking at a sample of 16 disease trajectories, we can plot sensitivity as
-function of viral load with the fitted Innova parameters as typical ($U=0$) 
-sensitivity curve. 
+function of viral load with the fitted (scaled) Innova parameters and no 
+random effect. 
+
+```{r}
+JuliaCall::julia_assign("eta", res2$root)
+```
 
 ```{julia sample, results="hide"}
 dm = LarremoreModel(.25)
@@ -134,7 +251,7 @@ dm = LarremoreModel(.25)
 individuals = [Individual(dm, 0.0) for i in 1:16] # no chance of non-covid symptoms
 # infect them all
 infect!.(individuals)
-lfd = LogRegTest("lfd", beta_vl, .5, intercept, .997)
+lfd = LogRegTest("lfd", eta*beta_vl, .5, intercept, .998)
 # simulate some days forward
 for i in 1:45
 	conduct_test!.(lfd, individuals)
@@ -156,22 +273,22 @@ tbl_status <- as_tibble(julia_eval("tbl_status"))
 tbl_typical_sensitivity_curve <- tibble(
 		u = 0,
 		`viral load` = 10^seq(0, 11, length.out = 1000),
-		sensitivity = sens(`viral load`, beta_vl = res$par[1], c = res$par[2])
+		sensitivity = sens(`viral load`, beta_vl = res$par[1], beta_u = 0.5, c = res$par[2])
 	)
 
 tbl_individual_sensitivity_curves <- expand_grid(
-		u, 
+		u,
 		`viral load` = 10^seq(0, 11, length.out = 1000),
 	) %>%
 	mutate(
-		sensitivity = sens(`viral load`, u, beta_u = 0.25, beta_vl = res$par[1], c = res$par[2])
+		sensitivity = sens(`viral load`, u, beta_u = 0.5, beta_vl = res$par[1], c = res$par[2])
 	)
 
 plt <- ggplot(tbl_individual_sensitivity_curves) +
 	aes(`viral load`, sensitivity, group = u) +
 	geom_line(alpha = .33) +
 	geom_line(data = tbl_typical_sensitivity_curve, color = "blue", size = 1.1) +
-	scale_x_log10() + 
+	scale_x_log10() +
 	scale_y_continuous("sensitivity", limits = c(0, 1)) +
 	labs(
 		caption = "'Typical' (u = 0, blue) and sampled individual sensitivity functions."
@@ -206,17 +323,17 @@ plt <- tbl_tests %>%
 				name == "infection_probability" ~ "infection probability",
 				name == "probability_positive" ~ "probability of positive test",
 			)
-	) %>% 
+	) %>%
 	ggplot() +
 		aes(day, value) +
 		geom_bar(aes(y = as.numeric(result)), stat = "identity", fill = "gray", position = position_identity()) +
-		geom_line(aes(color = name)) + 
+		geom_line(aes(color = name)) +
 		facet_wrap(~uuid) +
 		theme(
 			strip.text = element_blank(),
 			strip.background = element_blank(),
 			panel.grid = element_blank()
-		) + 
+		) +
 		labs(
 			y = "",
 			caption = "Positive test- and and infection probability over time; vertical bars = positive test (under daily testing)."
@@ -225,7 +342,7 @@ save_plot(plt, "sensitivity-infectivity-test-results")
 print(plt)
 ```
 
-Yet another way of visualizing the correlation between infectivity and 
+Yet another way of visualizing the correlation between infectivity and
 test-sensitivity is by plotting each individuals infection and positive-test
 probabilities in over time in a state-space diagram.
 
@@ -235,8 +352,8 @@ plt <- tbl_tests %>%
 		tbl_status %>%
 			select(uuid, day, infection_probability),
 		by = c("uuid", "day")
-	) %>% 
-	arrange(uuid, day) %>% 
+	) %>%
+	arrange(uuid, day) %>%
 	ggplot() +
 		aes(infection_probability, probability_positive) +
 		geom_point(aes(color = uuid)) +
@@ -246,7 +363,7 @@ plt <- tbl_tests %>%
 			strip.text = element_blank(),
 			strip.background = element_blank(),
 			panel.grid = element_blank()
-		) + 
+		) +
 		labs(
 			x = "infection probability",
 			y = "probability of positive test result",

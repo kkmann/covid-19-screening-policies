@@ -247,4 +247,5 @@ A logistic regression model allows more heterogeneous infection probabilities
 (either high or low).
 
 
+
 # References

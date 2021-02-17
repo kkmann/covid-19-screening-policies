@@ -96,6 +96,23 @@ or 7 days if the index PCR test is positive.
 
 ...
 
+```{r}
+plt <- tibble(
+	p_class = seq(0, 1, length.out = 100),
+	`temporal split` = (1 + p_class) * (choose(13, 2) + choose(14, 2)),
+	default = p_class * choose(27, 2) + 3*choose(9, 2)
+) %>%
+pivot_longer(c(`temporal split`, default), names_to = "policy", values_to = "expected daily contacts per class") %>%
+ggplot() +
+	aes(p_class, `expected daily contacts per class`) +
+	geom_line(aes(color = policy)) +
+	ylim(c(0, NA_real_)) +
+	xlab(expression(p[class]))
+
+save_plot(plt, "temproal-split", height = 3.5)
+print(plt)
+```
+
 
 
 
@@ -129,7 +146,7 @@ infection per week on average.
 ```{julia define-population, results="hide"}
 @everywhere begin 
 
-lfd = LogRegTest("lfd", 1.26, .5, -4.67, .997)
+lfd = LogRegTest("lfd", 0.534*1.26, .0, -4.67, .998)
 
 tbl_policies = DataFrame(
 	name = ["default", "Thu/Fri off", "Mon screening", "test & release", "50:50 split"],

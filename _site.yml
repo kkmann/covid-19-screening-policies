@@ -1,14 +1,8 @@
 name: "Small-Scale Agent-Based Simulations of Test and Isolation Policies"
 navbar:
   left:
-    - text: "Home"
-      href: index.html
-    - text: "Disease Model"
-      href: disease-model.html
-    - text: "LFD Test Model"
-      href: lfd-sensitivity-model.html
     - text: "Policy Evaluation for Reopening of Schools"
-      href: schools.html
+      href: index.html
   right: 
     - icon: fa-envelope fa-lg
       href: mailto:<kevin.kunzmann@mrc-bsu.cam.ac.uk>

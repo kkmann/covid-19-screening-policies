@@ -1,4 +1,7 @@
 ![build & deploy site](https://github.com/kkmann/covid-19-screening-policies/workflows/build%20&%20deploy%20site/badge.svg)
+[![DOI](https://zenodo.org/badge/335292916.svg)](https://zenodo.org/badge/latestdoi/335292916)
+
+
 
 # Covid-19 Screening Policy Evaluation in Small Populations
 

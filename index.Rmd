@@ -8,7 +8,7 @@ output:
         toc_float: true
 bibliography: references.bib
 params:
-    iterations: 50
+    iterations: 100
 ---
 
 ```{r r-setup, include=FALSE, cache=FALSE}
@@ -25,7 +25,7 @@ width <- 8
 height <- width/1.61
 
 knitr::opts_chunk$set(
-	# cache = TRUE,
+	cache = TRUE,
 	echo = FALSE,
 	fig.width = width,
 	fig.height = height
@@ -349,8 +349,101 @@ print(plt)
 
 ## Autocorrelation
 
-...
+The performance of any repeated testing strategy crucially depends on the 
+autocorrelation of the test results within an individual.
+If the autocorrelation is low, even a test with low sensitivity may identify
+an infected individual after 2 or 3 tests with high probability.
+The dependency on the latent VL trajectory already induces a certain level
+of autocorrelation for repeated tests within an individual. 
+However, this inherent AC does not capture additional effects such as tiring 
+of both testing staff and/or the testand due to frequent testing.
+A simple way to explore this is to add an autoregressive component to the
+test sensitivity.
+Here we look at a dependency on the last test result within up to 3 days.
+If no test was conducted in that interval, the autoregressive component is set 
+to 0.
+We compute the AC function based on a random sample of infected individuals
+before becoming symptomatic (since we assume that symptomatic individuals isolate anyhow).
+Under an AR model with positive coefficient, repeated testing reduces the
+average sensitivity of a test since individuals tend to get tested before their
+viral load reaches high enough levels to trigger a positive test. 
 
+```{r plot-acf}
+get_ar <- function(ar_coefficient = 0, ar_window = 0L, seed = 42L, nrsmpl = 1e4) {
+	julia_call("Random.seed!", as.integer(seed))
+	lfd <- julia_call("LogRegTest", 
+		"lfd", innova$slope, innova$intercept, 0.998, ar_window = ar_window, ar_coefficient = ar_coefficient,
+		need_return = "Julia"
+	)
+	dm <- julia_call("LarremoreModel", get_gamma(R = 3), frac_symptomatic = 0.5, need_return = "Julia")
+	individuals <- julia_call("Individual.", dm, rep(.01, nrsmpl), need_return = "Julia")
+	julia_call("infect!.", individuals, need_return = "Julia")
+	for (i in 1:21) {
+		if ((i %% 7) %in% 0:4) { # only test on weekends
+			julia_call("conduct_test!.", lfd, individuals, need_return = "None")
+		}
+		julia_call("step!.", individuals, need_return = "None")
+	}
+	tbl_status <- julia_call("get_status_logs", individuals, need_return = "R") %>% 
+		as_tibble()
+	tbl_tests <- julia_call("get_test_logs", individuals, need_return = "R") %>% 
+		as_tibble() %>% 
+		select(-viral_load)
+	
+	left_join(tbl_tests, tbl_status, by = c("uuid", "day")) %>% 
+		select(uuid, day, result, viral_load, probability_positive, symptomatic) %>% 
+		group_by(uuid) %>% 
+		filter(
+			!any(symptomatic) | (row_number() < which(symptomatic)[1])
+		) %>%
+		summarize(
+			acf = list(tibble(
+				lag = acf(as.numeric(result), plot = FALSE, lag.max = 7)$lag[,,1],
+				ac = acf(as.numeric(result), plot = FALSE, lag.max = 7)$acf[,,1]
+			)),
+			.groups = "drop"
+		) %>% 
+		unnest(acf) %>% 
+		mutate(
+			ac = if_else(is.nan(ac), 1, ac) # constant signal has ac 1
+		) %>% 
+	group_by(lag) %>% 
+	summarize(
+		mid = mean(ac), 
+		lo = quantile(ac, .05), 
+		hi = quantile(ac, .95), 
+		.groups = "drop"
+	)
+}
+
+plt <- tibble(
+		coefficient = c(0, .25, .5, .75)
+	) %>% 
+	mutate(
+		ar = map(coefficient, ~get_ar(., 3L, nrsmpl = 1e4))
+	) %>% 
+	unnest(ar) %>%
+	mutate(
+		coefficient = sprintf("%.2f", coefficient)
+	) %>% 
+	ggplot() +
+		aes(lag, mid, color = coefficient) +
+		geom_line(aes(y = mid)) + 
+		scale_color_grey("") +
+		ylab("autocorrelation") +
+		scale_x_continuous("lag [days]", breaks = seq(0, 21, by = 1)) +
+		theme(
+			legend.position = "right"
+		)
+
+save_plot(plt, "test-autocorrelation", width = width, height = height/2)
+print(plt)
+```
+
+Evidently, the implied autocorrelation under the Larremore et al. model is 
+already fairly high.
+Still it might be worthwhile exploring a setting with a more extreme 
+AR structure.
 
 
 
@@ -400,31 +493,73 @@ print(plt)
 
 
 
+# Evaluating Performance
+
+In a school context, the number of infections is secondary since almost all
+disease courses are very mild.
+The number of *infectious* pupils might, however, be of interest as an indicator
+for the risk posed to the wider community.
+Furthermore, the number of schooldays missed, the number of (PCR) tests required,
+and the average daily number of contacts might all be of interest as well.
+
+
+
+# Results {.tabset}
 
 ```{r define-scenarios}
-tbl_sim_scenarios <- tibble(
-		n_bubble = n_bubble,
-		bubbles_per_class = bubbles_per_class,
-		classes_per_school = classes_per_school,
-		pr_meet_class = pr_meet_class,
-		pr_meet_school = pr_meet_school,
-	) %>% expand_grid(
+tbl_sim_scenarios <- bind_rows(
+		# fully crossed for normal pr_meet_class
 		tibble(
-			R = c(1.5, 3, 6),
-			gamma = purrr::map_dbl(R, get_gamma)
+			n_bubble = n_bubble,
+			bubbles_per_class = bubbles_per_class,
+			classes_per_school = classes_per_school,
+			pr_meet_class = pr_meet_class,
+			pr_meet_school = pr_meet_school,
+		) %>% expand_grid(
+			tibble(
+				R = c(1.5, 3, 6),
+				gamma = purrr::map_dbl(R, get_gamma)
+			),
+			frac_symptomatic = c(0.25, 0.5, 0.75),
+			pr_external_infections = 1/(n_school*7), # expected 1 per week
+			pr_noncovid_symptoms = .01,
+			pcr = list(pcr),
+			tibble(
+				mean_sensitivity = c(.4, .6, .8),
+				eta = purrr::map_dbl(mean_sensitivity, get_eta)
+			),
+			ar_coefficient = c(0.0, 0.75)
+		) %>%
+		mutate(
+			slope = innova$slope, intercept = innova$intercept,
+			ar_window = 3L
 		),
-		frac_symptomatic = c(0.25, 0.5, 0.75),
-		pr_external_infections = 1/(n_school*7), # expected 1 per week
-		pr_noncovid_symptoms = .01,
-		pcr = list(pcr),
+		# reduced set for pr_meet_class = 1
 		tibble(
-			mean_sensitivity = c(.4, .6, .8),
-			eta = purrr::map_dbl(mean_sensitivity, get_eta)
-		)
-	) %>%
-	mutate(
-		slope = innova$slope, intercept = innova$intercept, 
-		ar_window = 0L, ar_coefficient = 0
+			n_bubble = 27,
+			bubbles_per_class = 1,
+			classes_per_school = classes_per_school,
+			pr_meet_class = pr_meet_class,
+			pr_meet_school = pr_meet_school,
+		) %>% expand_grid(
+			tibble(
+				R = c(1.5, 3, 6),
+				gamma = purrr::map_dbl(R, get_gamma)
+			),
+			frac_symptomatic = 0.5,
+			pr_external_infections = 1/(n_school*7), # expected 1 per week
+			pr_noncovid_symptoms = .01,
+			pcr = list(pcr),
+			tibble(
+				mean_sensitivity = c(.4, .6, .8),
+				eta = purrr::map_dbl(mean_sensitivity, get_eta)
+			),
+			ar_coefficient = 0.0
+		) %>%
+		mutate(
+			slope = innova$slope, intercept = innova$intercept,
+			ar_window = 3L
+		)	
 	) %>%
 	expand_grid(
 		policy_name = c("default", "Thu/Fri off", "Mon screening", "Mon/Wed screening", "test & release"),
@@ -445,10 +580,10 @@ tbl_results <- bind_cols(
 			need_return = "R"
 		)
 	)
-) %>% 
+) %>%
 rename(
 	`mean sensitivity` = mean_sensitivity
-) %>% 
+) %>%
 mutate(
 	mean_weekly_infections = round(pr_external_infections*n_school*7, 2)
 )
@@ -456,44 +591,29 @@ readr::write_rds(tbl_results, "tbl_results.rds", compress = "gz")
 ```
 
 
-
-# Evaluating Performance
-
-In a school context, the number of infections is secondary since almost all
-disease courses are very mild.
-The number of *infectious* pupils might, however, be of interest as an indicator
-for the risk posed to the wider community.
-Furthermore, the number of schooldays missed, the number of (PCR) tests required,
-and the average daily number of contacts might all be of interest as well.
-
-
-
-# Results {.tabset}
-
 ## Infections & infectivtiy
 
 The mean daily number of infectious pupils is close to proportional to the
-cumulative number of infections and the proportionality constant are negligible 
+cumulative number of infections and the proportionality constant are negligible
 between policies.
 
 ```{r}
 plt <- tbl_results %>%
 	filter(
+		n_bubble == 9 & bubbles_per_class == 3,
+		ar_coefficient == 0,
 		frac_symptomatic == 0.5,
 		mean_weekly_infections == 1
 	) %>%
 	ggplot() +
-		aes(n_infected/n_school, mean_daily_infectious) +
+		aes(n_infected/n_school, mean_daily_infectious, color = policy_name, fill = policy_name) +
 		geom_vline(xintercept = 6/n_school) +
-		geom_point(aes(color = policy_name), alpha = 0.5, shape = 16) +
-		geom_smooth(
-			aes(color = policy_name), method = "lm", se = FALSE,
-			formula = y ~ x, size = 0.5
-		) +
+		geom_point(alpha = .2, shape = 16) +
+		stat_ellipse(geom = "polygon", alpha = 0.33, color = NA, level = 0.9) + 
 		scale_y_continuous("mean infectious (daily)") +
-		scale_x_continuous("% infected (cumulative)", labels = scales::percent) +
-		facet_grid(`mean sensitivity` ~ R, labeller = label_both, scales = "free_x")
-save_plot(plt, "infectiousness-vs-infectivity", width = width, height = 1.5*height)
+		scale_x_continuous("% infected (cumulative)", labels = scales::percent, limits = c(NA, 1)) +
+		facet_grid(`mean sensitivity` ~ R, labeller = label_both)
+save_plot(plt, "results-infectiousness-vs-infectivity", width = width, height = 1.5*height)
 print(plt)
 ```
 
@@ -501,24 +621,49 @@ We thus use the two terms interchangeably and focus on the marginal distribution
 the cumulative number of infections.
 
 ```{r}
-plt <- tbl_results %>%
+plt1 <- tbl_results %>%
 	filter(
+		n_bubble == 9 & bubbles_per_class == 3,
 		frac_symptomatic == 0.5,
 		mean_weekly_infections == 1
 	) %>%
 	ggplot() +
-		aes(policy_name, n_infected/324) +
-		geom_hline(yintercept = 6/324, color = "red") +
+		aes(policy_name, n_infected/n_school, color = factor(ar_coefficient)) +
+		geom_hline(yintercept = 6/n_school) +
 		geom_boxplot() +
-		scale_y_continuous("% infected (cumulative)", labels = scales::percent) +
+		scale_y_continuous("% infected (cumulative)", labels = scales::percent, limits = c(0, 1)) +
+		scale_color_grey() +
 		facet_grid(`mean sensitivity` ~ R, labeller = label_both) +
 		theme(
-			axis.text.x = element_text(angle = 45, hjust = 1),
-			axis.title.x = element_blank()
-		)
-save_plot(plt, "infectivity", width = width, height = 1.5*height)
+			axis.text.x = element_text(angle = 33, hjust = 1),
+			axis.title.x = element_blank(),
+			legend.position = "right"
+		) +
+		ggtitle("Distribution of % infected by AR coefficient")
+plt2 <- tbl_results %>%
+	filter(
+		n_bubble == 9 & bubbles_per_class == 3,
+		ar_coefficient == 0,
+		mean_weekly_infections == 1
+	) %>%
+	ggplot() +
+		aes(policy_name, n_infected/n_school, color = factor(1 - frac_symptomatic)) +
+		geom_hline(yintercept = 6/n_school) +
+		geom_boxplot() +
+		scale_y_continuous("% infected (cumulative)", labels = scales::percent, limits = c(0, 1)) +
+		scale_color_grey() +
+		facet_grid(`mean sensitivity` ~ R, labeller = label_both) +
+		theme(
+			axis.text.x = element_text(angle = 33, hjust = 1),
+			axis.title.x = element_blank(),
+			legend.position = "right"
+		) +
+		ggtitle("Distribution of % infected by % asymptomatic")
+plt <- plt1 + plt2 + plot_layout(ncol = 1)
+save_plot(plt, "results-infectivity-marginal", width = width, height = 2.2*height)
 print(plt)
 ```
+
 
 
 ## PCR Tests Required
@@ -526,21 +671,43 @@ print(plt)
 ```{r}
 plt <- tbl_results %>%
 	filter(
+		n_bubble == 9 & bubbles_per_class == 3,
+		ar_coefficient == 0,
 		frac_symptomatic == 0.5,
 		mean_weekly_infections == 1
 	) %>%
 	ggplot() +
-		aes(n_infected/324, n_pcr_tests) +
-		geom_vline(xintercept = 6/324) +
-		geom_point(aes(color = policy_name), alpha = 0.5, shape = 16) +
-		geom_smooth(
-			aes(color = policy_name), method = "lm", se = FALSE,
-			formula = y ~ x, size = 0.5
-		) +
+		aes(policy_name, n_pcr_tests) +
+		geom_hline(yintercept = 6/n_school) +
+		geom_boxplot() +
 		scale_y_continuous("PCR test required (cumulative)") +
-		scale_x_continuous("% infected (cumulative)", labels = scales::percent) +
-		facet_grid(`mean sensitivity` ~ R, labeller = label_both, scales = "free_x")
-save_plot(plt, "pcr-vs-infectivity", width = width, height = 1.5*height)
+		facet_grid(`mean sensitivity` ~ R, labeller = label_both) +
+		theme(
+			axis.text.x = element_text(angle = 33, hjust = 1),
+			axis.title.x = element_blank(),
+			legend.position = "right"
+		)
+save_plot(plt, "results-pcr-marginal", width = width, height = 1.2*height)
+print(plt)
+```
+
+```{r}
+plt <- tbl_results %>%
+	filter(
+		n_bubble == 9 & bubbles_per_class == 3,
+		ar_coefficient == 0,
+		frac_symptomatic == 0.5,
+		mean_weekly_infections == 1
+	) %>%
+	ggplot() +
+		aes(n_infected/n_school, n_pcr_tests, color = policy_name, fill = policy_name) +
+		geom_vline(xintercept = 6/n_school) +
+		geom_point(alpha = .2, shape = 16) +
+		stat_ellipse(geom = "polygon", alpha = 0.33, color = NA, level = 0.9) + 
+		scale_y_continuous("PCR test required (cumulative)") +
+		scale_x_continuous("% infected (cumulative)", labels = scales::percent, limits = c(NA, 1)) +
+		facet_grid(`mean sensitivity` ~ R, labeller = label_both)
+save_plot(plt, "results-pcr-vs-infectivity", width = width, height = 1.5*height)
 print(plt)
 ```
 
@@ -550,24 +717,97 @@ print(plt)
 ```{r}
 plt <- tbl_results %>%
 	filter(
+		n_bubble == 9 & bubbles_per_class == 3,
+		ar_coefficient == 0,
 		frac_symptomatic == 0.5,
 		mean_weekly_infections == 1
 	) %>%
 	ggplot() +
-		aes(n_infected/324, workdays_missed/324/5/6) +
-		geom_vline(xintercept = 6/324) +
-		geom_point(aes(color = policy_name), alpha = 0.5, shape = 16) +
-		geom_smooth(
-			aes(color = policy_name), method = "lm", se = FALSE,
-			formula = y ~ x, size = 0.5
-		) +
-		scale_x_continuous("% infected (cumulative)", labels = scales::percent) +
+		aes(n_infected/n_school, workdays_missed/n_school/5/6, color = policy_name, fill = policy_name) +
+		geom_abline(slope = 1) +
+		geom_point(alpha = .2, shape = 16) +
+		stat_ellipse(geom = "polygon", alpha = 0.33, color = NA, level = 0.9) + 
+		scale_x_continuous("% infected (cumulative)", labels = scales::percent, limits = c(NA, 1)) +
 		scale_y_continuous(labels = scales::percent) +
-		facet_grid(`mean sensitivity` ~ R, labeller = label_both, scales = "free_x") +
+		facet_grid(`mean sensitivity` ~ R, labeller = label_both) +
 		labs(
 			y = "% schooldays missed (cumulative)"
 		)
-save_plot(plt, "schooldays-missed-vs-infectivity", width = width, height = 1.5*height)
+save_plot(plt, "results-schooldays-missed-vs-infectivity", width = width, height = 1.5*height)
+print(plt)
+```
+
+```{r}
+plt <- tbl_results %>%
+	filter(
+		n_bubble == 9 & bubbles_per_class == 3,
+		ar_coefficient == 0.75,
+		frac_symptomatic == 0.5,
+		mean_weekly_infections == 1
+	) %>%
+	ggplot() +
+		aes(n_infected/n_school, workdays_missed/n_school/5/6, color = policy_name, fill = policy_name) +
+		geom_abline(slope = 1) +
+		geom_point(alpha = .2, shape = 16) +
+		stat_ellipse(geom = "polygon", alpha = 0.33, color = NA, level = 0.9) + 
+		scale_x_continuous("% infected (cumulative)", labels = scales::percent, limits = c(NA, 1)) +
+		scale_y_continuous(labels = scales::percent) +
+		facet_grid(`mean sensitivity` ~ R, labeller = label_both) +
+		labs(
+			y = "% schooldays missed (cumulative)"
+		)
+save_plot(plt, "sensitivity-schooldays-missed-vs-infectivity-ar", width = width, height = 1.5*height)
+print(plt)
+```
+
+```{r}
+plt <- tbl_results %>%
+	filter(
+		n_bubble == 27 & bubbles_per_class == 1,
+		ar_coefficient == 0,
+		frac_symptomatic == 0.5,
+		mean_weekly_infections == 1
+	) %>%
+	rename(
+		`R*` = R
+	) %>% 
+	ggplot() +
+		aes(n_infected/n_school, workdays_missed/n_school/5/6, color = policy_name, fill = policy_name) +
+		geom_abline(slope = 1) +
+		geom_point(alpha = .2, shape = 16) +
+		stat_ellipse(geom = "polygon", alpha = 0.33, color = NA, level = 0.9) + 
+		scale_x_continuous("% infected (cumulative)", labels = scales::percent, limits = c(NA, 1)) +
+		scale_y_continuous(labels = scales::percent) +
+		facet_grid(`mean sensitivity` ~ `R*`, labeller = label_both) +
+		labs(
+			y = "% schooldays missed (cumulative)"
+		)
+save_plot(plt, "sensitivity-schooldays-missed-vs-infectivity-bubbles", width = width, height = 1.5*height)
+print(plt)
+```
+
+```{r}
+plt <- tbl_results %>%
+	filter(
+		ar_coefficient == 0,
+		frac_symptomatic == 0.5,
+		mean_weekly_infections == 1
+	) %>%
+	rename(
+		`R*` = R
+	) %>% 
+	ggplot() +
+		aes(policy_name, n_infected/n_school, color = factor(bubbles_per_class)) +
+		geom_hline(yintercept = 6/n_school) +
+		geom_boxplot() +
+		scale_y_continuous("% infected (cumulative)", labels = scales::percent, limits = c(0, 1)) +
+		scale_color_grey() +
+		facet_grid(`mean sensitivity` ~ `R*`, labeller = label_both) +
+		theme(
+			axis.text.x = element_text(angle = 33, hjust = 1),
+			axis.title.x = element_blank()
+		)
+save_plot(plt, "sensitivity-infectivity-marignal-bubbles", width = width, height = 1.25*height)
 print(plt)
 ```
 

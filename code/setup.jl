@@ -10,7 +10,7 @@ seed!(42)
 
 # load environment on worker processors
 using Distributed
-addprocs(min(6, Sys.CPU_THREADS)) # memory limitations...
+addprocs(min(8, Sys.CPU_THREADS)) # memory limitations...
 @everywhere begin 
 	using Pkg
 	Pkg.activate(".julia")

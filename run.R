@@ -1,17 +1,8 @@
----
-title: "Policy Evaluation for Reopening of Schools"
-author: "Kevin Kunzmann"
-date: "`r format(Sys.time(), '%d %B, %Y')`"
-output: 
-    html_document:
-        toc: true
-        toc_float: true
-bibliography: references.bib
-params:
-    iterations: 100
----
+params <- list(
+	iterations = 5L
+)
 
-```{r r-setup, include=FALSE, cache=FALSE}
+## ----r-setup, include=FALSE, cache=FALSE----------------------------------------------------------------------------------------------------------------------------------
 library(JuliaCall)
 library(tidyverse)
 library(tidygraph)
@@ -33,54 +24,9 @@ knitr::opts_chunk$set(
 
 JuliaCall::julia_setup(force = TRUE)
 JuliaCall::julia_source("code/setup.jl")
-```
 
 
-
-# Problem Statement
-
-The ongoing Covid-19 pandemic in the United Kingdom made nationwide lockdowns
-of schools a reality in late 2020 and early 2021.
-Such drastic policies are particularly burdensome for families with young
-children who cannot effectively attend remote schooling.
-The availability of cheap screening tests opens the opportunity of a more
-nuanced approach to reopening at least nurseries and primary schools.
-However, the impact of the various screening and isolation policies on key
-performance indicators is not well understood.
-
-
-
-# The Model {.tabset}
-
-
-## School Structure
-
-We consider a typical UK primary school with two tracks of classes for all 
-six grades (a total of 12 classes).
-We further assume that each class can be split in three bubbles 
-(overall 36 bubbles)  and that risk-contacts among pupils who do not belong to 
-the same bubble can be reduced greatly.
-Finally, we assume that each bubble consists of nine pupils bringing the
-total number of pupils to $9\cdot 3\cdot 12=324$.
-
-On each of the three levels (bubble/class/school) member of the same group 
-have a defined chance of a daily risk-contact ('meeting probability'). 
-After applying the respective test and isolation policies for all groups,
-risk contacts on all levels are sampled independently.
-For each risk-contact, the corresponding infection probability is used to 
-determine (again by random sampling) weather or not a transmission occurs.
-
-We do not model staff explicitly.
-
-We assume a daily meeting probability of $1/(324 - 1)$ on the school level,
-of $3/(27 - 1)$ on the class level, and of $1.0$ on the bubble level.
-We further assume a daily chance of non-Covid related symptoms of $0.01$ per
-individual. 
-Further, we assume that every individual is at risk of an external infection 
-with a probability of $1/7/324$, i.e., there is roughly one new external
-infection per week on average.
-
-```{r plot-school-structure}
+## ----plot-school-structure------------------------------------------------------------------------------------------------------------------------------------------------
           n_bubble <- 9
  bubbles_per_class <- 3
 classes_per_school <- 12
@@ -114,25 +60,10 @@ plt <- julia_call("school",
 			caption = "Adjacency matrix of school population;\r\nconnection strength is 'expected pairwise daily risk contacts' (across all shared groups)."
 		)
 save_plot(plt, "adjacency-matrix", width = 2*width/3, height = 2*height/3)
-print(plt)
-```
 
 
-## Calibrating Infectivity
 
-We use the joint model for viral load (VL) and symptom onset proposed by
-Larremore and colleagues.
-The Larremore disease model critically depends on the
-choice of the infectivity constant ($\gamma$) for the proportionality 
-[@larremore2020a].
-We fit a calibration curve for $\gamma$ by simulating $R_0$ for a range of
-infectivity values assuming a fraction of symptomatic individuals of 50%.
-To that end, a single index case is externally infected at day $0$ and the
-population is simulated for 21 days without any intervention.
-A the conditional mean of a zero-inflated negative binomial regression can then 
-be used to obtain $\gamma$ as function of the desired $R_0$.
-
-```{r calibrate-infectivity}
+## ----calibrate-infectivity------------------------------------------------------------------------------------------------------------------------------------------------
 tbl_r_zero <- tibble(
 	gamma = seq(0, 0.1, length.out = 1000),
 	R = julia_call("simulate_r_zero.", 
@@ -167,20 +98,10 @@ plt <- ggplot(tbl_r_zero) +
 		caption = "Fitted zero-inflated negative binomial regression for r-zero vs. infectivity."
 	)
 save_plot(plt, "calibrating-infectivity", width = width, height = height/2)
-print(plt)
-```
-
-A $R_0$ of less than $1.5$ in a school environment is highly unlikely and thus 
-considered the best-case-scenario.
-We consider $R_0 = 1.5, 3, 6$.
 
 
-## VL Trajectories
 
-To given an impression of typical trajectories we sample 16 trajectories
-using the default parameters and a fraction of 50% asymptomatic cases.
-
-```{r plot-vl-trajectories, warning=FALSE}
+## ----plot-vl-trajectories, warning=FALSE----------------------------------------------------------------------------------------------------------------------------------
 dm <- julia_call("LarremoreModel", get_gamma(R = 3), frac_symptomatic = 0.5, need_return = "Julia")
 individuals <- julia_call("Individual.", dm, rep(.01, 32), need_return = "Julia")
 julia_call("infect!.", individuals, need_return = "Julia")
@@ -205,25 +126,14 @@ plt <- julia_call("get_status_logs", individuals, need_return = "R") %>%
 			strip.background = element_blank()
 		)
 save_plot(plt, "vl-trajectories")
-print(plt)
-```
 
 
 
-## Test Sensitivity
-
-We assume a fixed sensitivity of 97.5% over a lower limit of detection of $300 cp/ml$
-and a specificity of 100% for PCR tests.
-
-```{r define-pcr-test}
+## ----define-pcr-test------------------------------------------------------------------------------------------------------------------------------------------------------
 pcr <- julia_call("FixedTest", "pcr", 0.975, 1.0, lod = 300.0, need_return = "Julia")
-```
 
-LFD tests are generally much less sensitive.
-We fit a logistic curve to data for the Innova LFD shown [here](http://modmedmicro.nsms.ox.ac.uk/wp-content/uploads/2021/01/infectivity_manuscript_20210119_merged.pdf)
-by screen-grabbing the curve on page 22 of the PDF.
 
-```{r fit-innova-data}
+## ----fit-innova-data------------------------------------------------------------------------------------------------------------------------------------------------------
 # screen grabbed pixels
 tbl_innova_data <- tibble(
 	`viral load` = 10^(2:7),
@@ -250,35 +160,9 @@ innova <- optim(
 )
 innova$slope <- innova$par[1]
 innova$intercept <- innova$par[2]
-```
 
-Since we use different studies to calibrate the disease model (Larremore) and
-the test sensitivity profile, a plausibility check is in place.
-We use a third data source, the [Liverpool community testing report](https://www.liverpool.ac.uk/media/livacuk/coronavirus/Liverpool,Community,Testing,Pilot,Interim,Evaluation.pdf)
-to check the plausibility of the fitted sensitivity profile.
-The Liverpool pilot found that the test sensitivity of the Innova test in a
-practical setting was only 40%.
-The study was based on *presymptomatic* individuals.
-We can use this information by simulating a population of infected individuals
-and randomly pick a pre-symptomatic time-point with a viral load detectable by PCR.
-The mean of the corresponding distribution of viral load values should then be
-aligned with the Liverpool data.
-Since this is not the case, we introduce a scaling factor to reconcile the
-shape of the sensitivity curve found in the Oxford data with the mean sensitivity
-of the real-world experiement from Liverpool, i.e., we consider 'scaled sensitivity'
 
-\begin{align}
-\operatorname{sensitivity}'(\operatorname{VL}) :&= 
-	\operatorname{logit}^{-1}\big(
-	\beta_{\operatorname{VL}} \cdot \log_{10}\big( \operatorname{VL}^\eta \big)
-	+ c_{\operatorname{test}}
-\big)
-\end{align}
-
-For a sample of $100,000$ under the Larremore et al. model with 50% symptomatic
-cases the mean of the scaled sensitivity as function of $\eta$ is given below.
-
-```{r recalibrate-innova-lfd-test}
+## ----recalibrate-innova-lfd-test------------------------------------------------------------------------------------------------------------------------------------------
 dm <- julia_call("LarremoreModel", get_gamma(R = 3), frac_symptomatic = 0.5, need_return = "Julia")
 individuals <- julia_call("Individual.", dm, rep(.01, 1e5), need_return = "Julia")
 julia_call("infect!.", individuals, need_return = "Julia")
@@ -343,32 +227,10 @@ plt <- tbl_scenarios %>%
 			legend.position = "right"
 		)
 save_plot(plt, "fit-sensitivity", width = width, height = height/2)
-print(plt)
-```
 
 
-## Autocorrelation
 
-The performance of any repeated testing strategy crucially depends on the 
-autocorrelation of the test results within an individual.
-If the autocorrelation is low, even a test with low sensitivity may identify
-an infected individual after 2 or 3 tests with high probability.
-The dependency on the latent VL trajectory already induces a certain level
-of autocorrelation for repeated tests within an individual. 
-However, this inherent AC does not capture additional effects such as tiring 
-of both testing staff and/or the testand due to frequent testing.
-A simple way to explore this is to add an autoregressive component to the
-test sensitivity.
-Here we look at a dependency on the last test result within up to 3 days.
-If no test was conducted in that interval, the autoregressive component is set 
-to 0.
-We compute the AC function based on a random sample of infected individuals
-before becoming symptomatic (since we assume that symptomatic individuals isolate anyhow).
-Under an AR model with positive coefficient, repeated testing reduces the
-average sensitivity of a test since individuals tend to get tested before their
-viral load reaches high enough levels to trigger a positive test. 
-
-```{r plot-acf}
+## ----plot-acf-------------------------------------------------------------------------------------------------------------------------------------------------------------
 get_ar <- function(ar_coefficient = 0, ar_window = 0L, seed = 42L, nrsmpl = 1e4) {
 	julia_call("Random.seed!", as.integer(seed))
 	lfd <- julia_call("LogRegTest", 
@@ -437,19 +299,10 @@ plt <- tibble(
 		)
 
 save_plot(plt, "test-autocorrelation", width = width, height = height/2)
-print(plt)
-```
-
-Evidently, the implied autocorrelation under the Larremore et al. model is 
-already fairly high.
-Still it might be worthwhile exploring a setting with a more extreme 
-AR structure.
 
 
 
-## Sensitivity & Infectivity
-
-```{r plot-sensitivity-vs-infection-probability}
+## ----plot-sensitivity-vs-infection-probability----------------------------------------------------------------------------------------------------------------------------
 plt <- expand_grid(
 		tibble(
 			`mean sensitivity` = c(.4, .6, .8),
@@ -476,37 +329,10 @@ plt <- expand_grid(
 		) +
 		ylab("sensitivity")
 save_plot(plt, "sensitivity-vs-infectivity", width = width, height = height)
-print(plt)
-```
 
 
 
-# Policies
-
-## Symptomatic Isolation (default)
-
-...
-
-## 'Test & Release' Approach
-
-...
-
-
-
-# Evaluating Performance
-
-In a school context, the number of infections is secondary since almost all
-disease courses are very mild.
-The number of *infectious* pupils might, however, be of interest as an indicator
-for the risk posed to the wider community.
-Furthermore, the number of schooldays missed, the number of (PCR) tests required,
-and the average daily number of contacts might all be of interest as well.
-
-
-
-# Results {.tabset}
-
-```{r define-scenarios}
+## ----define-scenarios-----------------------------------------------------------------------------------------------------------------------------------------------------
 tbl_sim_scenarios <- bind_rows(
 		# fully crossed for normal pr_meet_class
 		tibble(
@@ -565,9 +391,9 @@ tbl_sim_scenarios <- bind_rows(
 		policy_name = c("default", "Thu/Fri off", "Mon screening", "Mon/Wed screening", "test & release"),
 		iter = 1:(params$iterations)
 	)
-```
 
-```{r run-simulation}
+
+## ----run-simulation-------------------------------------------------------------------------------------------------------------------------------------------------------
 tbl_results <- bind_cols(
 	tbl_sim_scenarios,
 	with(tbl_sim_scenarios,
@@ -587,17 +413,10 @@ rename(
 mutate(
 	mean_weekly_infections = round(pr_external_infections*n_school*7, 2)
 )
-readr::write_rds(tbl_results, "tbl_results.rds", compress = "gz")
-```
+readr::write_rds(tbl_results, "_site/tbl_results.rds", compress = "gz")
 
 
-## Infections & infectivtiy
-
-The mean daily number of infectious pupils is close to proportional to the
-cumulative number of infections and the proportionality constant are negligible
-between policies.
-
-```{r}
+## -------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 plt <- tbl_results %>%
 	filter(
 		n_bubble == 9 & bubbles_per_class == 3,
@@ -614,13 +433,10 @@ plt <- tbl_results %>%
 		scale_x_continuous("% infected (cumulative)", labels = scales::percent, limits = c(NA, 1)) +
 		facet_grid(`mean sensitivity` ~ R, labeller = label_both)
 save_plot(plt, "results-infectiousness-vs-infectivity", width = width, height = 1.5*height)
-print(plt)
-```
 
-We thus use the two terms interchangeably and focus on the marginal distribution
-the cumulative number of infections.
 
-```{r}
+
+## -------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 plt1 <- tbl_results %>%
 	filter(
 		n_bubble == 9 & bubbles_per_class == 3,
@@ -632,7 +448,7 @@ plt1 <- tbl_results %>%
 		geom_hline(yintercept = 6/n_school) +
 		geom_boxplot() +
 		scale_y_continuous("% infected (cumulative)", labels = scales::percent, limits = c(0, 1)) +
-		scale_color_grey() +
+		# scale_color_grey() +
 		facet_grid(`mean sensitivity` ~ R, labeller = label_both) +
 		theme(
 			axis.text.x = element_text(angle = 33, hjust = 1),
@@ -651,7 +467,7 @@ plt2 <- tbl_results %>%
 		geom_hline(yintercept = 6/n_school) +
 		geom_boxplot() +
 		scale_y_continuous("% infected (cumulative)", labels = scales::percent, limits = c(0, 1)) +
-		scale_color_grey() +
+		# scale_color_grey() +
 		facet_grid(`mean sensitivity` ~ R, labeller = label_both) +
 		theme(
 			axis.text.x = element_text(angle = 33, hjust = 1),
@@ -661,14 +477,10 @@ plt2 <- tbl_results %>%
 		ggtitle("Distribution of % infected by % asymptomatic")
 plt <- plt1 + plt2 + plot_layout(ncol = 1)
 save_plot(plt, "results-infectivity-marginal", width = width, height = 2.2*height)
-print(plt)
-```
 
 
 
-## PCR Tests Required
-
-```{r}
+## -------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 plt <- tbl_results %>%
 	filter(
 		n_bubble == 9 & bubbles_per_class == 3,
@@ -688,10 +500,10 @@ plt <- tbl_results %>%
 			legend.position = "right"
 		)
 save_plot(plt, "results-pcr-marginal", width = width, height = 1.2*height)
-print(plt)
-```
 
-```{r}
+
+
+## -------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 plt <- tbl_results %>%
 	filter(
 		n_bubble == 9 & bubbles_per_class == 3,
@@ -708,13 +520,10 @@ plt <- tbl_results %>%
 		scale_x_continuous("% infected (cumulative)", labels = scales::percent, limits = c(NA, 1)) +
 		facet_grid(`mean sensitivity` ~ R, labeller = label_both)
 save_plot(plt, "results-pcr-vs-infectivity", width = width, height = 1.5*height)
-print(plt)
-```
 
 
-## Schooldays Missed
 
-```{r}
+## -------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 plt <- tbl_results %>%
 	filter(
 		n_bubble == 9 & bubbles_per_class == 3,
@@ -734,10 +543,10 @@ plt <- tbl_results %>%
 			y = "% schooldays missed (cumulative)"
 		)
 save_plot(plt, "results-schooldays-missed-vs-infectivity", width = width, height = 1.5*height)
-print(plt)
-```
 
-```{r}
+
+
+## -------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 plt <- tbl_results %>%
 	filter(
 		n_bubble == 9 & bubbles_per_class == 3,
@@ -757,10 +566,10 @@ plt <- tbl_results %>%
 			y = "% schooldays missed (cumulative)"
 		)
 save_plot(plt, "sensitivity-schooldays-missed-vs-infectivity-ar", width = width, height = 1.5*height)
-print(plt)
-```
 
-```{r}
+
+
+## -------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 plt <- tbl_results %>%
 	filter(
 		n_bubble == 27 & bubbles_per_class == 1,
@@ -783,10 +592,10 @@ plt <- tbl_results %>%
 			y = "% schooldays missed (cumulative)"
 		)
 save_plot(plt, "sensitivity-schooldays-missed-vs-infectivity-bubbles", width = width, height = 1.5*height)
-print(plt)
-```
 
-```{r}
+
+
+## -------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 plt <- tbl_results %>%
 	filter(
 		ar_coefficient == 0,
@@ -801,16 +610,12 @@ plt <- tbl_results %>%
 		geom_hline(yintercept = 6/n_school) +
 		geom_boxplot() +
 		scale_y_continuous("% infected (cumulative)", labels = scales::percent, limits = c(0, 1)) +
-		scale_color_grey() +
+		# scale_color_grey() +
 		facet_grid(`mean sensitivity` ~ `R*`, labeller = label_both) +
 		theme(
 			axis.text.x = element_text(angle = 33, hjust = 1),
 			axis.title.x = element_blank()
 		)
 save_plot(plt, "sensitivity-infectivity-marignal-bubbles", width = width, height = 1.25*height)
-print(plt)
-```
 
 
-
-# References

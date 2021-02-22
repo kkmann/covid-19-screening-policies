@@ -5,7 +5,7 @@ dependencies:
 	julia -e 'using Pkg; Pkg.activate(".julia"); Pkg.instantiate(); Pkg.precompile()'
 	
 build_site: dependencies
-	Rscript -e 'source("renv/activate.R"); rmarkdown::render_site(encoding = "UTF-8")'
+	Rscript -e 'source("renv/activate.R"); source("run.R")'
 	
 clean:
-	rm -rf *_cache *_files figures site_libs *.rds
+	rm -rf *_cache *_files _site figures site_libs *.rds

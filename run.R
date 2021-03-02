@@ -372,7 +372,9 @@ rename(
 ) %>% 
 mutate(
 	policy_name = str_replace(policy_name, "test & release", "test for release")
-) %>% 
+)
+
+dir.create("_site")
 readr::write_rds(tbl_results, "_site/tbl_results.rds", compress = "gz")
 
 

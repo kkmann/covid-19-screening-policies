@@ -1,6 +1,6 @@
 function school(
 	n_per_bubble, bubbles_per_class, m_classes, pr_meet_class, pr_meet_school, 
-	gamma, frac_symptomatic, pr_noncov_symptoms;
+	gamma, frac_symptomatic, pr_noncov_symptoms, a, b;
 	policy = DoNothing()
 )
 	dm = LarremoreModel(gamma; frac_symptomatic = frac_symptomatic)
@@ -16,6 +16,8 @@ function school(
 	    policy_school = DoNothing(),
 	    meeting_days = collect(0:4),
 	    disease_model = dm,
-	    pr_unrelated_symptoms = pr_noncov_symptoms
+	    pr_unrelated_symptoms = pr_noncov_symptoms,
+	    a = a,
+	    b = b
     )
 end

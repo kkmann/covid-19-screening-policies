@@ -11,16 +11,10 @@ library(patchwork)
 library(pscl)
 
 source("code/util.R")
+source("code/expand_scenarios.R")
 
 width <- 8
-height <- width/1.61
-
-knitr::opts_chunk$set(
-	cache = TRUE,
-	echo = FALSE,
-	fig.width = width,
-	fig.height = height
-)
+height <- width/1.55
 
 JuliaCall::julia_setup(force = TRUE)
 JuliaCall::julia_source("code/setup.jl")
@@ -41,7 +35,9 @@ plt <- julia_call("school",
 		n_bubble, bubbles_per_class, classes_per_school, pr_meet_class, pr_meet_school, 
 		0.0, # gamma
 		0.5, # frac symptomatic
-		0.01 # pr_noncov_symptoms
+		0.01, # pr_noncov_symptoms
+		Inf, # a for beta of test compliance 
+		1.0 # b
 	) %>% 
 	julia_call("get_adjacency_matrix", .) %>% 
 	as_tbl_graph() %>% 
@@ -71,7 +67,8 @@ tbl_r_zero <- tibble(
 			n_bubble, bubbles_per_class, classes_per_school, pr_meet_class, pr_meet_school, 
 			gamma,
 			0.5, # frac symptomatic
-			0.01 # pr_noncov_symptoms
+			0.01, # pr_noncov_symptoms
+			Inf, 1.0
 		)
 	)
 )
@@ -309,8 +306,8 @@ plt <- expand_grid(
 			eta = map_dbl(`mean sensitivity`, get_eta)
 		),
 		tibble(
-			R = c(1.5, 3, 6),
-			gamma = map_dbl(R, get_gamma)
+			Rs = c(1.5, 3, 6),
+			gamma = map_dbl(Rs, get_gamma)
 		)
 	) %>% 
 	expand_grid(
@@ -324,106 +321,102 @@ plt <- expand_grid(
 		aes(`probability to infect`) +
 		geom_line(aes(y = sensitivity)) +
 		facet_grid(
-			`mean sensitivity` ~ R, 
+			`mean sensitivity` ~ Rs, 
 			 labeller = label_both
 		) +
 		ylab("sensitivity")
-save_plot(plt, "sensitivity-vs-infectivity", width = width, height = height)
+save_plot(plt, "sensitivity-vs-infectivity", width = width, height = .9*height)
 
 
 
 ## ----define-scenarios-----------------------------------------------------------------------------------------------------------------------------------------------------
 tbl_sim_scenarios <- bind_rows(
-		# fully crossed for normal pr_meet_class
-		tibble(
-			n_bubble = n_bubble,
-			bubbles_per_class = bubbles_per_class,
-			classes_per_school = classes_per_school,
-			pr_meet_class = pr_meet_class,
-			pr_meet_school = pr_meet_school,
-		) %>% expand_grid(
-			tibble(
-				R = c(1.5, 3, 6),
-				gamma = purrr::map_dbl(R, get_gamma)
-			),
-			frac_symptomatic = c(0.25, 0.5, 0.75),
-			pr_external_infections = 1/(n_school*7), # expected 1 per week
-			pr_noncovid_symptoms = .01,
-			pcr = list(pcr),
-			tibble(
-				mean_sensitivity = c(.4, .6, .8),
-				eta = purrr::map_dbl(mean_sensitivity, get_eta)
-			),
-			ar_coefficient = c(0.0, 0.75)
-		) %>%
-		mutate(
-			slope = innova$slope, intercept = innova$intercept,
-			ar_window = 3L
-		),
-		# reduced set for pr_meet_class = 1
-		tibble(
-			n_bubble = 27,
-			bubbles_per_class = 1,
-			classes_per_school = classes_per_school,
-			pr_meet_class = pr_meet_class,
-			pr_meet_school = pr_meet_school,
-		) %>% expand_grid(
-			tibble(
-				R = c(1.5, 3, 6),
-				gamma = purrr::map_dbl(R, get_gamma)
-			),
-			frac_symptomatic = 0.5,
-			pr_external_infections = 1/(n_school*7), # expected 1 per week
-			pr_noncovid_symptoms = .01,
-			pcr = list(pcr),
-			tibble(
-				mean_sensitivity = c(.4, .6, .8),
-				eta = purrr::map_dbl(mean_sensitivity, get_eta)
-			),
-			ar_coefficient = 0.0
-		) %>%
-		mutate(
-			slope = innova$slope, intercept = innova$intercept,
-			ar_window = 3L
-		)	
-	) %>%
-	expand_grid(
-		policy_name = c("default", "Thu/Fri off", "Mon screening", "Mon/Wed screening", "test & release"),
-		iter = 1:(params$iterations)
+	# default scenario with different levels of symtoms
+	expand_scenarios(
+		frac_symptomatic = c(0.25, 0.5, 0.75)
+	),
+	# different level of AR strength
+	expand_scenarios(
+		ar_coefficient = 0.75
+	),
+	# different bubble structure
+	expand_scenarios(
+		n_bubble = 27,
+		bubbles_per_class = 1
+	),
+	# different test compliance (mean = 66.67%)
+	expand_scenarios(
+		a = 2/15, b = 1/15
 	)
+)
 
 
 ## ----run-simulation-------------------------------------------------------------------------------------------------------------------------------------------------------
 tbl_results <- bind_cols(
-	tbl_sim_scenarios,
+	tbl_sim_scenarios %>% 
+		select(where(~length(unique(.)) > 1)), # drop constants
 	with(tbl_sim_scenarios,
 		julia_call("evaluate_performance",
 			n_bubble, bubbles_per_class, classes_per_school, pr_meet_class, pr_meet_school,
 			gamma, frac_symptomatic, pr_external_infections, pr_noncovid_symptoms,
-			pcr,
-			eta, slope, intercept, ar_window, ar_coefficient,
+			pcr_test,
+			eta, slope, intercept, ar_window, ar_coefficient, 
 			policy_name,
+			a, b,
 			need_return = "R"
 		)
 	)
 ) %>%
 rename(
 	`mean sensitivity` = mean_sensitivity
-) %>%
+) %>% 
 mutate(
-	mean_weekly_infections = round(pr_external_infections*n_school*7, 2)
-)
+	policy_name = str_replace(policy_name, "test & release", "test for release")
+) %>% 
 readr::write_rds(tbl_results, "_site/tbl_results.rds", compress = "gz")
+
+
+# main scenario ----------------------------------------------------------------
+plt <- tbl_results %>% 
+	filter(
+		bubbles_per_class == 3,
+		ar_coefficient == 0.0,
+		frac_symptomatic == 0.5,
+		a == Inf, b == 1,
+		R == 3,
+		`mean sensitivity` == 0.6
+	) %>% 
+	transmute(
+		policy_name,
+		`% infected (cumulative)` = n_infected/n_school,
+		`% schooldays missed (cumulative)` = workdays_missed/n_school/5/6
+	) %>% 
+	pivot_longer(-policy_name) %>% 
+	ggplot() +
+		aes(policy_name, value) +
+		geom_boxplot() +
+		scale_y_continuous("", labels = scales::percent) +
+		facet_wrap(~name) +
+		theme(
+			axis.text.x = element_text(angle = 33, hjust = 1),
+			axis.title.x = element_blank(),
+			legend.position = "right"
+		)
+save_plot(plt, "results-main", width = width, height = .75*height)
+
 
 
 ## -------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 plt <- tbl_results %>%
 	filter(
-		n_bubble == 9 & bubbles_per_class == 3,
-		ar_coefficient == 0,
+		bubbles_per_class == 3,
+		ar_coefficient == 0.0,
 		frac_symptomatic == 0.5,
-		mean_weekly_infections == 1
-	) %>%
+		a == Inf, b == 1
+	) %>% 
+	rename(
+		Rs = R
+	) %>% 
 	ggplot() +
 		aes(n_infected/n_school, mean_daily_infectious, color = policy_name, fill = policy_name) +
 		geom_vline(xintercept = 6/n_school) +
@@ -431,86 +424,97 @@ plt <- tbl_results %>%
 		stat_ellipse(geom = "polygon", alpha = 0.33, color = NA, level = 0.9) + 
 		scale_y_continuous("mean infectious (daily)") +
 		scale_x_continuous("% infected (cumulative)", labels = scales::percent, limits = c(NA, 1)) +
-		facet_grid(`mean sensitivity` ~ R, labeller = label_both)
-save_plot(plt, "results-infectiousness-vs-infectivity", width = width, height = 1.5*height)
+		facet_grid(`mean sensitivity` ~ Rs, labeller = label_both)
+save_plot(plt, "results-infectiousness-vs-infectivity", width = width, height = height)
 
 
 
 ## -------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 plt1 <- tbl_results %>%
 	filter(
-		n_bubble == 9 & bubbles_per_class == 3,
+		bubbles_per_class == 3,
 		frac_symptomatic == 0.5,
-		mean_weekly_infections == 1
+		a == Inf, b == 1
 	) %>%
+	rename(
+		Rs = R
+	) %>% 
 	ggplot() +
 		aes(policy_name, n_infected/n_school, color = factor(ar_coefficient)) +
 		geom_hline(yintercept = 6/n_school) +
 		geom_boxplot() +
 		scale_y_continuous("% infected (cumulative)", labels = scales::percent, limits = c(0, 1)) +
 		# scale_color_grey() +
-		facet_grid(`mean sensitivity` ~ R, labeller = label_both) +
+		facet_grid(`mean sensitivity` ~ Rs, labeller = label_both) +
 		theme(
 			axis.text.x = element_text(angle = 33, hjust = 1),
 			axis.title.x = element_blank(),
-			legend.position = "right"
+			legend.position = "bottom"
 		) +
 		ggtitle("Distribution of % infected by AR coefficient")
 plt2 <- tbl_results %>%
 	filter(
-		n_bubble == 9 & bubbles_per_class == 3,
-		ar_coefficient == 0,
-		mean_weekly_infections == 1
-	) %>%
+		bubbles_per_class == 3,
+		a == Inf, b == 1
+	) %>% 
+	rename(
+		Rs = R
+	) %>% 
 	ggplot() +
 		aes(policy_name, n_infected/n_school, color = factor(1 - frac_symptomatic)) +
 		geom_hline(yintercept = 6/n_school) +
 		geom_boxplot() +
 		scale_y_continuous("% infected (cumulative)", labels = scales::percent, limits = c(0, 1)) +
 		# scale_color_grey() +
-		facet_grid(`mean sensitivity` ~ R, labeller = label_both) +
+		facet_grid(`mean sensitivity` ~ Rs, labeller = label_both) +
 		theme(
 			axis.text.x = element_text(angle = 33, hjust = 1),
 			axis.title.x = element_blank(),
-			legend.position = "right"
+			legend.position = "bottom"
 		) +
 		ggtitle("Distribution of % infected by % asymptomatic")
-plt <- plt1 + plt2 + plot_layout(ncol = 1)
-save_plot(plt, "results-infectivity-marginal", width = width, height = 2.2*height)
+plt <- plt2 + plt1 + plot_layout(nrow = 1)
+save_plot(plt, "results-infectivity-marginal", width = 1.33*width, height = 1.33*height)
 
 
 
 ## -------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 plt <- tbl_results %>%
 	filter(
-		n_bubble == 9 & bubbles_per_class == 3,
-		ar_coefficient == 0,
+		bubbles_per_class == 3,
+		ar_coefficient == 0.0,
 		frac_symptomatic == 0.5,
-		mean_weekly_infections == 1
+		a == Inf, b == 1
 	) %>%
+	rename(
+		Rs = R
+	) %>% 
 	ggplot() +
 		aes(policy_name, n_pcr_tests) +
 		geom_hline(yintercept = 6/n_school) +
 		geom_boxplot() +
 		scale_y_continuous("PCR test required (cumulative)") +
-		facet_grid(`mean sensitivity` ~ R, labeller = label_both) +
+		facet_grid(`mean sensitivity` ~ Rs, labeller = label_both) +
 		theme(
 			axis.text.x = element_text(angle = 33, hjust = 1),
 			axis.title.x = element_blank(),
 			legend.position = "right"
 		)
-save_plot(plt, "results-pcr-marginal", width = width, height = 1.2*height)
+save_plot(plt, "results-pcr-marginal", width = width, height = height)
 
 
 
 ## -------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 plt <- tbl_results %>%
 	filter(
-		n_bubble == 9 & bubbles_per_class == 3,
-		ar_coefficient == 0,
+		bubbles_per_class == 3,
+		ar_coefficient == 0.0,
 		frac_symptomatic == 0.5,
-		mean_weekly_infections == 1
+		a == Inf, b == 1
 	) %>%
+	rename(
+		Rs = R
+	) %>% 
 	ggplot() +
 		aes(n_infected/n_school, n_pcr_tests, color = policy_name, fill = policy_name) +
 		geom_vline(xintercept = 6/n_school) +
@@ -518,67 +522,21 @@ plt <- tbl_results %>%
 		stat_ellipse(geom = "polygon", alpha = 0.33, color = NA, level = 0.9) + 
 		scale_y_continuous("PCR test required (cumulative)") +
 		scale_x_continuous("% infected (cumulative)", labels = scales::percent, limits = c(NA, 1)) +
-		facet_grid(`mean sensitivity` ~ R, labeller = label_both)
-save_plot(plt, "results-pcr-vs-infectivity", width = width, height = 1.5*height)
+		facet_grid(`mean sensitivity` ~ Rs, labeller = label_both)
+save_plot(plt, "results-pcr-vs-infectivity", width = width, height = height)
 
 
 
 ## -------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 plt <- tbl_results %>%
 	filter(
-		n_bubble == 9 & bubbles_per_class == 3,
-		ar_coefficient == 0,
+		bubbles_per_class == 3,
+		ar_coefficient == 0.0,
 		frac_symptomatic == 0.5,
-		mean_weekly_infections == 1
-	) %>%
-	ggplot() +
-		aes(n_infected/n_school, workdays_missed/n_school/5/6, color = policy_name, fill = policy_name) +
-		geom_abline(slope = 1) +
-		geom_point(alpha = .2, shape = 16) +
-		stat_ellipse(geom = "polygon", alpha = 0.33, color = NA, level = 0.9) + 
-		scale_x_continuous("% infected (cumulative)", labels = scales::percent, limits = c(NA, 1)) +
-		scale_y_continuous(labels = scales::percent) +
-		facet_grid(`mean sensitivity` ~ R, labeller = label_both) +
-		labs(
-			y = "% schooldays missed (cumulative)"
-		)
-save_plot(plt, "results-schooldays-missed-vs-infectivity", width = width, height = 1.5*height)
-
-
-
-## -------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-plt <- tbl_results %>%
-	filter(
-		n_bubble == 9 & bubbles_per_class == 3,
-		ar_coefficient == 0.75,
-		frac_symptomatic == 0.5,
-		mean_weekly_infections == 1
-	) %>%
-	ggplot() +
-		aes(n_infected/n_school, workdays_missed/n_school/5/6, color = policy_name, fill = policy_name) +
-		geom_abline(slope = 1) +
-		geom_point(alpha = .2, shape = 16) +
-		stat_ellipse(geom = "polygon", alpha = 0.33, color = NA, level = 0.9) + 
-		scale_x_continuous("% infected (cumulative)", labels = scales::percent, limits = c(NA, 1)) +
-		scale_y_continuous(labels = scales::percent) +
-		facet_grid(`mean sensitivity` ~ R, labeller = label_both) +
-		labs(
-			y = "% schooldays missed (cumulative)"
-		)
-save_plot(plt, "sensitivity-schooldays-missed-vs-infectivity-ar", width = width, height = 1.5*height)
-
-
-
-## -------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-plt <- tbl_results %>%
-	filter(
-		n_bubble == 27 & bubbles_per_class == 1,
-		ar_coefficient == 0,
-		frac_symptomatic == 0.5,
-		mean_weekly_infections == 1
+		a == Inf, b == 1
 	) %>%
 	rename(
-		`R*` = R
+		Rs = R
 	) %>% 
 	ggplot() +
 		aes(n_infected/n_school, workdays_missed/n_school/5/6, color = policy_name, fill = policy_name) +
@@ -587,35 +545,127 @@ plt <- tbl_results %>%
 		stat_ellipse(geom = "polygon", alpha = 0.33, color = NA, level = 0.9) + 
 		scale_x_continuous("% infected (cumulative)", labels = scales::percent, limits = c(NA, 1)) +
 		scale_y_continuous(labels = scales::percent) +
-		facet_grid(`mean sensitivity` ~ `R*`, labeller = label_both) +
+		facet_grid(`mean sensitivity` ~ Rs, labeller = label_both) +
 		labs(
 			y = "% schooldays missed (cumulative)"
 		)
-save_plot(plt, "sensitivity-schooldays-missed-vs-infectivity-bubbles", width = width, height = 1.5*height)
+save_plot(plt, "results-schooldays-missed-vs-infectivity", width = width, height = height)
 
 
 
 ## -------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 plt <- tbl_results %>%
 	filter(
-		ar_coefficient == 0,
+		bubbles_per_class == 3,
+		ar_coefficient == 0.75,
 		frac_symptomatic == 0.5,
-		mean_weekly_infections == 1
+		a == Inf, b == 1
 	) %>%
 	rename(
-		`R*` = R
+		Rs = R
+	) %>% 
+	ggplot() +
+		aes(n_infected/n_school, workdays_missed/n_school/5/6, color = policy_name, fill = policy_name) +
+		geom_abline(slope = 1) +
+		geom_point(alpha = .2, shape = 16) +
+		stat_ellipse(geom = "polygon", alpha = 0.33, color = NA, level = 0.9) + 
+		scale_x_continuous("% infected (cumulative)", labels = scales::percent, limits = c(NA, 1)) +
+		scale_y_continuous(labels = scales::percent) +
+		facet_grid(`mean sensitivity` ~ Rs, labeller = label_both) +
+		labs(
+			y = "% schooldays missed (cumulative)"
+		)
+save_plot(plt, "sensitivity-schooldays-missed-vs-infectivity-ar", width = width, height = height)
+
+
+
+## -------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+plt <- tbl_results %>%
+	filter(
+		bubbles_per_class == 1,
+		ar_coefficient == 0.0,
+		frac_symptomatic == 0.5,
+		a == Inf, b == 1
+	) %>%
+	rename(
+		`Rs*` = R
+	) %>% 
+	ggplot() +
+		aes(n_infected/n_school, workdays_missed/n_school/5/6, color = policy_name, fill = policy_name) +
+		geom_abline(slope = 1) +
+		geom_point(alpha = .2, shape = 16) +
+		stat_ellipse(geom = "polygon", alpha = 0.33, color = NA, level = 0.9) + 
+		scale_x_continuous("% infected (cumulative)", labels = scales::percent, limits = c(NA, 1)) +
+		scale_y_continuous(labels = scales::percent) +
+		facet_grid(`mean sensitivity` ~ `Rs*`, labeller = label_both) +
+		labs(
+			y = "% schooldays missed (cumulative)"
+		)
+save_plot(plt, "sensitivity-schooldays-missed-vs-infectivity-bubbles", width = width, height = height)
+
+plt <- tbl_results %>%
+	filter(
+		ar_coefficient == 0.0,
+		frac_symptomatic == 0.5,
+		a == Inf, b == 1
+	) %>%
+	rename(
+		`Rs*` = R
 	) %>% 
 	ggplot() +
 		aes(policy_name, n_infected/n_school, color = factor(bubbles_per_class)) +
 		geom_hline(yintercept = 6/n_school) +
 		geom_boxplot() +
 		scale_y_continuous("% infected (cumulative)", labels = scales::percent, limits = c(0, 1)) +
-		# scale_color_grey() +
-		facet_grid(`mean sensitivity` ~ `R*`, labeller = label_both) +
+		scale_color_discrete("number of bubbles per class:") +
+		facet_grid(`mean sensitivity` ~ `Rs*`, labeller = label_both) +
 		theme(
 			axis.text.x = element_text(angle = 33, hjust = 1),
-			axis.title.x = element_blank()
+			axis.title.x = element_blank(),
+			legend.title = element_text()
 		)
-save_plot(plt, "sensitivity-infectivity-marignal-bubbles", width = width, height = 1.25*height)
+save_plot(plt, "sensitivity-infectivity-marignal-bubbles", width = width, height = 1.1*height)
 
 
+# sensitivity wrt to compliance ------------------------------------------------
+# plot beta distribution used to sample individual compliance
+plt <- tibble(
+		compliance = rbeta(10^5, shape1 = 2/15, shape2 = 1/15)
+	) %>% 
+	ggplot() +
+		aes(compliance) +
+		geom_histogram(aes(y = ..ncount..), binwidth = 0.05) +
+		scale_y_continuous("", labels = scales::percent)
+save_plot(plt, "sensitivity-infectivity-compliance-beta", width = .66*width, height = .5*height)
+
+# plot results
+plt <- tbl_results %>%
+	filter(
+		bubbles_per_class == 3,
+		ar_coefficient == 0.0,
+		frac_symptomatic == 0.5
+	) %>%
+	rename(
+		Rs = R
+	) %>% 
+	mutate(
+		tmp = if_else(is.finite(a), a / (a + b), 1),
+		test_compliance = factor(
+			tmp,
+			levels = unique(tmp), 
+			labels = sprintf("%.2f", unique(tmp))
+		)
+	) %>%
+	ggplot() +
+		aes(policy_name, n_infected/n_school, color = test_compliance) +
+		geom_hline(yintercept = 6/n_school) +
+		geom_boxplot() +
+		scale_y_continuous("% infected (cumulative)", labels = scales::percent, limits = c(0, 1)) +
+		scale_color_discrete("average LFD test compliance probability:") +
+		facet_grid(`mean sensitivity` ~ Rs, labeller = label_both) +
+		theme(
+			axis.text.x = element_text(angle = 33, hjust = 1),
+			axis.title.x = element_blank(),
+			legend.title = element_text()
+		)
+save_plot(plt, "sensitivity-infectivity-compliance", width = width, height = 1.1*height)

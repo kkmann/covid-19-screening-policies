@@ -1,39 +1,14 @@
-function evaluate_performance_(
-	n_per_bubble, bubbles_per_class, m_classes, pr_meet_class, pr_meet_school,
-	gamma, frac_symptomatic, pr_external_infections, pr_noncovid_symptoms,
-	pcr,
-	eta, slope, intercept, 	ar_window, ar_coefficient,
-	policy_name, a, b
-)
-	lfd = LogRegTest("lfd", eta*slope, intercept, .998; ar_window = ar_window, ar_coefficient = ar_coefficient)
-	s = school(
-		n_per_bubble, bubbles_per_class, m_classes, pr_meet_class, pr_meet_school, 
-		gamma, frac_symptomatic, pr_noncovid_symptoms, a, b;
-		policy = get_policy(policy_name, lfd)
-	)
-	for i in 1:(6*7)
-		for indv in s.individuals
-			if rand(Bernoulli(pr_external_infections))
-				infect!(indv)
+function f(school, pr_external_infections, days; n = 1L)
+	function g(x)
+		for i in 1:(days)
+			for indv in x.individuals
+				if rand(Bernoulli(pr_external_infections))
+					infect!(indv)
+				end
 			end
-		end
-    	step!(s)
-    end
-    evaluate(s)
-end
-
-function evaluate_performance(
-	n_per_bubble, bubbles_per_class, m_classes, pr_meet_class, pr_meet_school,
-	gamma, frac_symptomatic, pr_external_infections, pr_noncovid_symptoms,
-	pcr,
-	eta, slope, intercept, 	ar_window, ar_coefficient,
-	policy_name, a, b
-)
-	vcat(pmap(evaluate_performance_,
-		n_per_bubble, bubbles_per_class, m_classes, pr_meet_class, pr_meet_school,
-		gamma, frac_symptomatic, pr_external_infections, pr_noncovid_symptoms,
-		pcr,
-		eta, slope, intercept, 	ar_window, ar_coefficient,
-		policy_name, a, b
-	)...)
+	    	step!(x)
+	    end
+    	return evaluate(x)
+	end
+	return vcat(pmap(g, [resample(school) for i = 1:n])...)
 end

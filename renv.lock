@@ -128,6 +128,13 @@
       "Repository": "CRAN",
       "Hash": "3cca8477943a8e840c3eb64a25fef9d2"
     },
+    "cachem": {
+      "Package": "cachem",
+      "Version": "1.0.1",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "3259868ce0a3fab9456de8635cc34728"
+    },
     "callr": {
       "Package": "callr",
       "Version": "3.5.1",
@@ -246,6 +253,13 @@
       "Source": "Repository",
       "Repository": "CRAN",
       "Hash": "dad6793a5a1f73c8e91f1a1e3e834b05"
+    },
+    "fastmap": {
+      "Package": "fastmap",
+      "Version": "1.1.0",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "77bd60a6157420d4ffa93b27cf6a58b8"
     },
     "forcats": {
       "Package": "forcats",
@@ -428,6 +442,13 @@
       "Source": "Repository",
       "Repository": "CRAN",
       "Hash": "61e4a10781dd00d7d81dd06ca9b94e95"
+    },
+    "memoise": {
+      "Package": "memoise",
+      "Version": "2.0.0",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "a0bc51650201a56d00a4798523cc91b3"
     },
     "mgcv": {
       "Package": "mgcv",

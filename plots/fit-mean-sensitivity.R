@@ -1,0 +1,36 @@
+params <- scenario()
+
+tbl_innova_data <- tibble(
+		`viral load` = 10^(2:7),
+		sensitivity = 1 - (c(621, 521, 344, 207, 144, 123) - 114) / (684 - 114)
+	)
+tbl_scenarios <- tibble(
+		`mean sensitivity` = c(mean_sensitivity(scenario(), 1), .4, .6, .8),
+		eta = map_dbl(`mean sensitivity`, ~eta(scenario(), target = .))
+	)
+plt <- tbl_scenarios %>% 
+	expand_grid(
+		`viral load` = 10^seq(0, 11, length.out = 1000),
+	) %>% 
+	mutate(
+		sensitivity = sensitivity(`viral load`^eta, params)
+	) %>%
+	ggplot() +
+		aes(`viral load`, sensitivity) +
+		geom_line(aes(linetype = sprintf("%.2f", `mean sensitivity`))) +
+		geom_point(data = tbl_innova_data) +
+		scale_x_log10() +
+		scale_y_continuous("", limits = c(0, 1)) +
+		scale_linetype_manual("", 
+			breaks = sprintf("%.2f", tbl_scenarios$`mean sensitivity`), 
+			values = c(1, 4, 3, 2),
+			labels = purrr::map2(
+				sprintf("%.2f", tbl_scenarios$`mean sensitivity`),
+				tbl_scenarios$eta,
+				~bquote( .(..1) (eta == .(round(..2, 2))) )
+			)
+		) + 
+		theme(
+			legend.position = "right"
+		)
+save_plot(plt, "fit-mean-sensitivity", width = width, height = height/2)

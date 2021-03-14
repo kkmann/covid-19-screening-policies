@@ -1,9 +1,14 @@
 function school(
 	n_per_bubble, bubbles_per_class, m_classes, pr_meet_class, pr_meet_school, 
-	gamma, frac_symptomatic, pr_noncov_symptoms, a, b, lli, 
+	gamma, 
+	frac_symptomatic, pr_noncov_symptoms, l, scale, df,
+	a, b, lli, 
 	policy
 )
 	dm = LarremoreModel(gamma; frac_symptomatic = frac_symptomatic, l10vl_clearance = log10(lli))
+	if scale > 0
+		dm = HeavyTailsModel(dm; l = l, scale = scale, df = df)
+	end
     ThreeLevelPopulation(
     	n_per_bubble = n_per_bubble,  
     	bubbles_per_class = bubbles_per_class, 

@@ -1,4 +1,5 @@
 params <- scenario()
+lfd_test <- lfd(params)
 
 plt <- expand_grid(
 		tibble(
@@ -14,7 +15,9 @@ plt <- expand_grid(
 		`viral load` = 10^seq(0, 11, length.out = 1000)
 	) %>% 
 	mutate(
-		sensitivity = sensitivity(`viral load`^eta, params),
+		sensitivity =  map2_dbl(`viral load`, eta,
+				~julia_call("sensitivity.", lfd_test, ..1^..2, need_return = "R")
+			),
 		`1e6` = pmax(0, pmin(1, gamma * (log10(`viral load`) - 6))),
 		`1e3` = pmax(0, pmin(1, gamma * (log10(`viral load`) - 3)))
 	) %>% 

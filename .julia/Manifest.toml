@@ -110,9 +110,9 @@ version = "0.26.3"
 
 [[FillArrays]]
 deps = ["LinearAlgebra", "Random", "SparseArrays"]
-git-tree-sha1 = "4705cc4e212c3c978c60b1b18118ec49b4d731fd"
+git-tree-sha1 = "dd4ab4257c257532003eb9836eea07473fcc732e"
 uuid = "1a297f60-69ca-5386-bcde-b61e274b549b"
-version = "0.11.5"
+version = "0.11.6"
 
 [[Formatting]]
 deps = ["Printf"]
@@ -270,10 +270,10 @@ uuid = "79098fc4-a85e-5d69-aa6a-4863f24498fa"
 version = "0.6.1"
 
 [[Rmath_jll]]
-deps = ["Libdl", "Pkg"]
-git-tree-sha1 = "d76185aa1f421306dec73c057aa384bad74188f0"
+deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg"]
+git-tree-sha1 = "1b7bf41258f6c5c9c31df8c1ba34c1fc88674957"
 uuid = "f50d1b31-88e8-58de-be2c-1cc44531875f"
-version = "0.2.2+1"
+version = "0.2.2+2"
 
 [[SHA]]
 uuid = "ea8e919c-243c-51af-8825-aaa63cd721ce"
@@ -344,9 +344,9 @@ version = "1.0.0"
 
 [[Tables]]
 deps = ["DataAPI", "DataValueInterfaces", "IteratorInterfaceExtensions", "LinearAlgebra", "TableTraits", "Test"]
-git-tree-sha1 = "a716dde43d57fa537a19058d044b495301ba6565"
+git-tree-sha1 = "f03fc113290ee7726b173fc7ea661260d204b3f2"
 uuid = "bd369af6-aec1-5ad0-b16a-f7cc5008161c"
-version = "1.3.2"
+version = "1.4.0"
 
 [[Test]]
 deps = ["Distributed", "InteractiveUtils", "Logging", "Random"]
@@ -366,9 +366,9 @@ uuid = "efce3f68-66dc-5838-9240-27a6d6f5f9b6"
 version = "0.5.3"
 
 [[cov19sim]]
-deps = ["DataFrames", "DataFramesMeta", "Distributed", "Distributions", "Documenter", "Interpolations", "Random", "Statistics", "Test", "UUIDs"]
-git-tree-sha1 = "d200e3affaab6a4b371ef354dcb94797992c56c0"
-repo-rev = "main"
+deps = ["DataFrames", "DataFramesMeta", "Distributed", "Distributions", "Documenter", "Interpolations", "LinearAlgebra", "Random", "Statistics", "Test", "UUIDs"]
+git-tree-sha1 = "88272b4ac28a5da90e55f97df0d5ca143faa39a6"
+repo-rev = "re-introduce-random-effect-for-test-sensitivity"
 repo-url = "https://github.com/kkmann/cov19sim"
 uuid = "7070818b-bc4a-4efc-9908-1d2131e194b1"
 version = "0.1.0"

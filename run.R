@@ -3,41 +3,17 @@ library(tidyverse)
 library(tidygraph)
 library(ggraph)
 library(patchwork)
-library(pscl)
 
 width <- 8
 height <- width/1.5
 
 n_resample <- 250L
 
+mcache <- cachem::cache_mem(max_size = 1024^3)
+
 JuliaCall::julia_setup(force = TRUE)
 JuliaCall::julia_source("code/setup.jl")
 walk(list.files("code", pattern = "*.R", full.names = TRUE), source)
-
-
-# calibrate-infectivity (standard case) ----------------------------------------
-source("plots/population-structure.R")
-
-
-# calibrate-infectivity (standard case) ----------------------------------------
-source("plots/calibration-infectivity.R")
-
-
-# plot viral load sample trajectories ------------------------------------------
-source("plots/vl-trajectories.R")
-
-
-# recalibrate innova lfd mean sensitivity --------------------------------------
-source("plots/fit-mean-sensitivity.R")
-
-
-# plot autocorrelation ---------------------------------------------------------
-source("plots/autocorrelation.R")
-
-
-# plot sensitivity vs infection probability ------------------------------------
-source("plots/sensitivity-vs-infectivity.R")
-
 
 # define policies --------------------------------------------------------------
 pcr_turnaround <- 2L
@@ -74,6 +50,25 @@ lst_policies <- list(
 		)
 )
 
+# calibrate-infectivity (standard case) ----------------------------------------
+source("plots/population-structure.R")
+
+# calibrate-infectivity (standard case) ----------------------------------------
+source("plots/calibration-infectivity.R")
+
+# plot viral load sample trajectories ------------------------------------------
+source("plots/vl-trajectories.R")
+source("plots/vl-trajectories-heavy-tails.R")
+
+# recalibrate innova lfd mean sensitivity --------------------------------------
+source("plots/fit-mean-sensitivity.R")
+
+# plot autocorrelation ---------------------------------------------------------
+source("plots/autocorrelation.R")
+
+# plot sensitivity vs infection probability ------------------------------------
+source("plots/sensitivity-vs-infectivity.R")
+
 # main results, base scenario --------------------------------------------------
 source("plots/main-results.R")
 
@@ -85,3 +80,9 @@ source("plots/lower-lfd-compliance.R")
 
 # lower limit of infectivity ---------------------------------------------------
 source("plots/lower-lli.R")
+
+# heavy tails ------------------------------------------------------------------
+source("plots/heavy-tails-sensitivity.R")
+
+# random effects ---------------------------------------------------------------
+source("plots/random-effect-sensitivity.R")

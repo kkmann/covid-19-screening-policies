@@ -14,19 +14,20 @@ tbl_results <- bind_rows(
 		policies = lst_policies[c("Mon/Wed screening", "Mon screening", "test for release")],
 		params = scenario(), # standard compliance
 		gamma = map_dbl(c(1.5, 3, 6), ~gamma(., scenario())),
-		eta = map_dbl(c(0.4, 0.6, 0.8), ~eta(scenario(), .))
+		eta = map_dbl(c(0.6), ~eta(scenario(), .))
 	),
 	evaluate_performance(
-		policies = lst_policies[c("Mon/Wed screening", "Mon screening", "test for release")],
+		policies = lst_policies,
 		params = params,
 		gamma = map_dbl(c(1.5, 3, 6), ~gamma(., params)),
-		eta = map_dbl(c(0.4, 0.6, 0.8), ~eta(params, .))
+		eta = map_dbl(c(0.6), ~eta(params, .))
 	)
 )
-dir.create("_site/data", showWarnings = FALSE, recursive = TRUE)
-write_rds(tbl_results, "_site/data/tbl_compliance.rds")
 
 plt1 <- tbl_results %>% 
+	filter(
+		policy_name %in% c("Mon/Wed screening", "Mon screening", "test for release")
+	) %>% 
 	mutate(
 		tmp = if_else(is.finite(a), a / (a + b), 1),
 		`mean LFD test compliance:` = factor(
@@ -71,6 +72,6 @@ plt2 <- tbl_results %>%
 		theme(
 			legend.text = element_text(size = rel(1.1))
 		)
-plt <- plt1 + plt2 + plot_layout(ncol = 1, heights = c(1, 3)) + plot_annotation(tag_levels = "A")
-save_plot(plt, "results-schooldays-missed-vs-infectivity-lower-lfd-compliance", width = width, height = 1.75*height)
+plt <- plt1 + plt2 + plot_layout(ncol = 1, heights = c(1, 1.5)) + plot_annotation(tag_levels = "A")
+save_plot(plt, "sensitivity-lfd-compliance", width = width, height = 1.33*height)
 

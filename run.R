@@ -68,6 +68,7 @@ source("plots/autocorrelation.R")
 
 # plot sensitivity vs infection probability ------------------------------------
 source("plots/sensitivity-vs-infectivity.R")
+source("plots/temporal-shift.R")
 
 # main results, base scenario --------------------------------------------------
 source("plots/main-results.R")

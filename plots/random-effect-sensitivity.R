@@ -18,12 +18,17 @@ f <- function(ranef) {
 		`random effect` = sprintf("%.1f", lfd_ranef)
 	)
 }
-gamma2rs <- memoise::memoise(function(gamma) round(rzero(gamma, params_baseline), 1) )
 tbl_results <- bind_rows(
-		f(0), f(1), f(2)
-	) %>% # unify Rs notation
+		f(0), f(1.5)
+	) %>%
 	mutate(
-		Rs = map_dbl(gamma, gamma2rs)
+		# unify Rs values (sampling error)
+		Rs = case_when(
+				abs(Rs - 1.5) <= .5 ~ 1.5,
+				abs(Rs - 3) <= .5 ~ 3,
+				abs(Rs - 6) <= .5 ~ 6
+			) %>% 
+			factor()
 	)
 
 plt_boxplots <- tbl_results %>% 
@@ -66,22 +71,15 @@ tbl <- julia_call("get_status_logs", individuals, need_return = "R") %>%
 				~julia_call("get_probability_positive", 
 					 lfd(params_baseline), ..1, u = ..2)
 			),
-		`1.0` = map2_dbl(viral_load, u, 
+		`1.5` = map2_dbl(viral_load, u, 
 				~{
 					tmp <- params_baseline
-					tmp$lfd_ranef = 1.0
-					julia_call("get_probability_positive", lfd(tmp), ..1, u = ..2)
-				}
-			),
-		`2.0` = map2_dbl(viral_load, u, 
-				~{
-					tmp <- params_baseline
-					tmp$lfd_ranef = 2.0
+					tmp$lfd_ranef = 1.5
 					julia_call("get_probability_positive", lfd(tmp), ..1, u = ..2)
 				}
 			)
 	) %>% 
-	pivot_longer(c(`0.0`, `1.0`, `2.0`), names_to = "random effect", values_to = "sensitivity") %>%
+	pivot_longer(c(`0.0`, `1.5`), names_to = "random effect", values_to = "sensitivity") %>%
 	pivot_longer(c(infection_probability, sensitivity)) %>%
 	mutate(
 		symptomatic = factor(symptomatic, levels = c(FALSE, TRUE), labels = c("non-symptomatic", "symptomatic"))

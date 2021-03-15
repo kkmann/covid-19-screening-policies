@@ -1,26 +1,30 @@
+params_baseline <- scenario()
 params <- scenario(lli = 1e3)
 tbl_results <- bind_rows(
 		evaluate_performance(
 			policies = lst_policies,
-			params = scenario(),
-			gamma = map_dbl(c(1.5, 3, 6), ~gamma(., scenario())),
-			eta = eta(scenario(), target = 0.6)
+			params = params_baseline,
+			gamma = map_dbl(c(1.5, 3, 6), ~gamma(., params_baseline)),
+			eta = eta(params_baseline, target = 0.6)
 		),
 		evaluate_performance(
 			policies = lst_policies,
 			params = params,
 			gamma = map_dbl(c(1.5, 3, 6), ~gamma(., params, gamma_max = .06)),
-			eta = eta(params, target = 0.6)
-		) %>% 
-		mutate(
-			Rs = map_dbl(.data$gamma, ~round(rzero(., params, gamma_max = .06), 1))
+			eta = eta(params, target = 0.6),
+			.gamma_max = 0.06
 		)
 	) %>%
 	mutate(
-		LLI = factor(lli, levels = c(scenario()$lli, params$lli))
+		LLI = factor(lli, levels = c(params_baseline$lli, params$lli)),
+		# unify Rs values (sampling error)
+		Rs = case_when(
+				abs(Rs - 1.5) <= .25 ~ 1.5,
+				abs(Rs - 3) <= .25 ~ 3,
+				abs(Rs - 6) <= .25 ~ 6
+			) %>% 
+			factor()
 	)
-dir.create("_site/data", showWarnings = FALSE, recursive = TRUE)
-write_rds(tbl_results, "_site/data/tbl_lli.rds")
 
 plt1 <- tbl_results %>% 
 	ggplot() +
@@ -53,4 +57,4 @@ plt2 <- tbl_results %>%
 			legend.text = element_text(size = rel(1.1))
 		)
 plt <- plt1 + plt2 + plot_layout(ncol = 1, heights = c(1, 1.5)) + plot_annotation(tag_levels = "A")
-save_plot(plt, "results-schooldays-missed-vs-infectivity-lower-lli", width = width, height = 1.5*height)
+save_plot(plt, "sensitivity-lli", width = width, height = 1.33*height)

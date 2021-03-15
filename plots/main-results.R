@@ -43,14 +43,35 @@ plt_boxplots_n_tests <- tbl_results %>%
 		aes(policy_name, value) +
 		geom_boxplot() +
 		scale_y_continuous("average number of tests", limits = c(0, NA_real_)) +
-		facet_wrap(~name, scales = "free_y") +
+		facet_wrap(~name, scales = "free_y", ncol = 1) +
 		theme(
 			axis.text.x = element_text(angle = 33, hjust = 1),
 			axis.title.x = element_blank(),
 			legend.position = "right"
 		)
-plt <- plt_boxplots_infected_schooldays / plt_boxplots_n_tests
-save_plot(plt, "results-main", width = width, height = 1.25*height)
+plt_scatter <- tbl_results %>%
+	filter(
+		frac_symptomatic == .5,
+		Rs == 3
+	) %>% 
+	ggplot() +
+		aes(`% infected (cumulative)`, `% schooldays missed (cumulative)`,  color = policy_name, fill = policy_name) +
+		# facet_grid(`mean sensitivity` ~ Rs, labeller = label_both) +
+		geom_abline(slope = 1) +
+		scale_x_continuous(labels = scales::percent, limits = c(0, NA_real_)) +
+		scale_y_continuous(labels = scales::percent, limits = c(0, NA_real_)) +
+		geom_point(alpha = .33, shape = 16, size = 2) +
+		scale_color_discrete(guide = guide_legend(override.aes = list(alpha = 1))) +
+		coord_cartesian(expand = FALSE) +
+		theme(
+			legend.text = element_text(size = rel(1.1))
+		)
+plt <- plt_boxplots_infected_schooldays / 
+	(plt_boxplots_n_tests + (plt_scatter + theme(axis.title.x = element_text(margin = margin(t = -50, unit = "pt")))) ) + 
+	plot_annotation(tag_levels = "A") +
+	plot_layout(heights = c(1, 2), guides = "collect") &
+	theme(legend.position = "bottom")
+save_plot(plt, "results-main", width = width, height = 1.5*height)
 
 plt1 <- tbl_results %>% 
 	ggplot() +
@@ -72,7 +93,25 @@ tbl_results2 <- evaluate_performance(
 		eta = map_dbl(c(.4, .6, .8), ~eta(params, .)),
 		ar_coefficient = c(0, 0.75)
 	)
-plt2 <- tbl_results2 %>%
+plt3 <- tbl_results2 %>%
+	filter(ar_coefficient == 0) %>% 
+	ggplot() +
+		aes(policy_name, `% infected (cumulative)`, color = factor(`mean sensitivity`)) +
+		geom_boxplot() +
+		scale_y_continuous(labels = scales::percent, limits = c(0, NA_real_)) +
+		scale_color_discrete("mean sensitivity:") +
+		facet_wrap(~Rs, labeller = label_both) +
+		theme(
+			axis.text.x = element_text(angle = 33, hjust = 1),
+			axis.title.x = element_blank(),
+			legend.position = "top",
+			legend.title = element_text()
+		)
+
+plt <- plt1 + plt3 + plot_layout(nrow = 2) + plot_annotation(tag_levels = "A")
+save_plot(plt, "sensitivity-symptomatic-lfd-sensitivity", width = width, height = 1.5*height)
+
+plt <- tbl_results2 %>%
 	ggplot() +
 		aes(policy_name, `% infected (cumulative)`, color = factor(ar_coefficient)) +
 		geom_boxplot() +
@@ -85,27 +124,23 @@ plt2 <- tbl_results2 %>%
 			legend.position = "top",
 			legend.title = element_text()
 		)
-
-plt <- plt1 + plt2 + plot_layout(nrow = 2) + plot_annotation(tag_levels = "A")
-save_plot(plt, "results-symptoms-ar", width = width, height = 1.33*height)
+save_plot(plt, "sensitivity-autocorrelation", width = width, height = .66*height)
 
 
-
-
-plt <- tbl_results %>%
-	filter(
-		frac_symptomatic == .5
-	) %>% 
-	ggplot() +
-		aes(`% infected (cumulative)`, `% schooldays missed (cumulative)`,  color = policy_name, fill = policy_name) +
-		facet_grid(`mean sensitivity` ~ Rs, labeller = label_both) +
-		geom_abline(slope = 1) +
-		scale_x_continuous(labels = scales::percent, limits = c(0, NA_real_)) +
-		scale_y_continuous(labels = scales::percent, limits = c(0, NA_real_)) +
-		geom_point(alpha = .33, shape = 16, size = 2) +
-		scale_color_discrete(guide = guide_legend(override.aes = list(alpha = 1))) +
-		coord_cartesian(expand = FALSE) +
-		theme(
-			legend.text = element_text(size = rel(1.1))
-		)
-save_plot(plt, "results-schooldays-missed-vs-infectivity", width = width, height = .75*height)
+# plt <- tbl_results %>%
+# 	filter(
+# 		frac_symptomatic == .5
+# 	) %>% 
+# 	ggplot() +
+# 		aes(`% infected (cumulative)`, `% schooldays missed (cumulative)`,  color = policy_name, fill = policy_name) +
+# 		facet_grid(`mean sensitivity` ~ Rs, labeller = label_both) +
+# 		geom_abline(slope = 1) +
+# 		scale_x_continuous(labels = scales::percent, limits = c(0, NA_real_)) +
+# 		scale_y_continuous(labels = scales::percent, limits = c(0, NA_real_)) +
+# 		geom_point(alpha = .33, shape = 16, size = 2) +
+# 		scale_color_discrete(guide = guide_legend(override.aes = list(alpha = 1))) +
+# 		coord_cartesian(expand = FALSE) +
+# 		theme(
+# 			legend.text = element_text(size = rel(1.1))
+# 		)
+# save_plot(plt, "results-schooldays-missed-vs-infectivity", width = width, height = .75*height)

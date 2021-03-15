@@ -214,9 +214,15 @@ evaluate_performance_ <- function(params, policy, n = 1L) {
 		)
 }
 evaluate_performance_mem <- memoise::memoise(evaluate_performance_, cache = mcache)
-evaluate_performance <- function(policies, params = scenario(), n = if (!is.null(n_resample)) {n_resample} else {25L}, ...) {
-	gamma2rs <- memoise::memoise(function(gamma) round(rzero(gamma, params), 1) )
-	eta2mean_sensitivity <- memoise::memoise(function(eta) round(mean_sensitivity(params, eta), 2) )
+evaluate_performance <- function(
+	policies, 
+	params = scenario(), 
+	.gamma_min = 0.0, .gamma_max = 0.1,
+	n = if (!is.null(n_resample)) {n_resample} else {25L}, 
+	...
+) {
+	gamma2rs <- memoise::memoise(function(gamma, params) round(rzero(gamma, params, gamma_min = .gamma_min, gamma_max = .gamma_max), 1) )
+	eta2mean_sensitivity <- memoise::memoise(function(eta, params) round(mean_sensitivity(params, eta), 2) )
 	expand_scenario(params, ...) %>% 
 		expand_grid(tibble(policy = policies)) %>% 
 		mutate(
@@ -224,10 +230,10 @@ evaluate_performance <- function(policies, params = scenario(), n = if (!is.null
 			results = map2(params, policy, evaluate_performance_mem, n)
 		) %>% 
 		unnest(results) %>% 
-		select(-params) %>% 
 		mutate(
 			policy_name = factor(policy_name, levels = names(lst_policies)),
-			Rs = map_dbl(.data$gamma, gamma2rs),
-			`mean sensitivity` = map_dbl(.data$eta, eta2mean_sensitivity)
-		)
+			Rs = map2_dbl(.data$gamma, .data$params, gamma2rs),
+			`mean sensitivity` = map2_dbl(.data$eta, .data$params, eta2mean_sensitivity)
+		) %>% 
+		select(-params)
 }

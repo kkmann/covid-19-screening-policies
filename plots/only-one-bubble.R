@@ -55,4 +55,4 @@ plt2 <- tbl_results %>%
 			legend.text = element_text(size = rel(1.1))
 		)
 plt <- plt1 + plt2 + plot_layout(ncol = 1, heights = c(1, 1.5)) + plot_annotation(tag_levels = "A")
-save_plot(plt, "results-schooldays-missed-vs-infectivity-only-one-bubble", width = width, height = 1.5*height)
+save_plot(plt, "sensitivity-one-bubble", width = width, height = 1.33*height)

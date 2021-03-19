@@ -13,12 +13,17 @@ scenario <- function(
 	pcr_lod = 300.0,
 	pcr_sens = .975,
 	pcr_spec = 1.0,
-	gamma = 0.0,
-	eta = 1.0,
 	lfd_spec = 0.998,
+	lfd_ranef = 0.0,
 	ar_window = 3L,
 	ar_coefficient = 0.0,
 	days = as.integer(6*7),
+	scale = 0.0,
+	l = 2.5,
+	df = 3.0,
+	gamma_min = 0.0, gamma_max = 0.1,
+	rzero = 3.0,
+	mean_sensitivity = 0.6,
 	...
 ) {
 	res <- 	as.list(environment())
@@ -56,11 +61,6 @@ scenario <- function(
 	
 	res
 }
-
-sensitivity <- function(vl, params) {
-	lfd <- julia_call("LogRegTest", "lfd", params$lfd_slope, params$lfd_intercept, params$lfd_spec, need_return = "Julia")
-	julia_call("sensitivity.", lfd, vl, need_return = "R")
-}
 	
 n_class <- function(params) with(params, n_bubble * bubbles_per_class)
 n_school <- function(params) with(params, classes_per_school * n_class(params))
@@ -68,68 +68,136 @@ n_weekly_infections <- function(params) with(params, 7*n_school(params)*pr_exter
 
 schooldays <- function(params) with(params, sum(((1:days) %% 7) %in% 1:5))
 
+disease_model <- function(params, gamma = NULL) {
+	if (is.null(gamma))
+		gamma <- gamma(params$rzero, params)
+	dm <- julia_call("LarremoreModel", 
+			gamma, frac_symptomatic = params$frac_symptomatic, 
+			l10vl_clearance = log10(params$lli),
+			need_return = "Julia"
+		)
+	if (params$scale > 1) {
+		dm <- julia_call("HeavyTailsModel",
+			dm, 
+			l = params$l,
+			scale = params$scale,
+			df = params$df
+		)
+	}
+	return(dm)
+}
+
 pcr <- function(params) with(params, julia_call("FixedTest", "pcr", pcr_sens, pcr_spec, lod = pcr_lod, need_return = "Julia"))
 
-lfd <- function(params) {
-	with(params,
-		julia_call("LogRegTest", "lfd", 
-			eta*params$lfd_slope, params$lfd_intercept, lfd_spec,
-			ar_window = ar_window, ar_coefficient = ar_coefficient
-		)
+lfd <- function(params, eta = NULL) {
+	if (is.null(eta))
+		eta <- eta(params$mean_sensitivity, params)
+	julia_call("LogRegTest", "lfd", 
+		eta*params$lfd_slope, params$lfd_intercept, params$lfd_spec,
+		ar_window = params$ar_window, ar_coefficient = params$ar_coefficient,
+		ranef = params$lfd_ranef
 	)
 }
 
-fit_rzero_ <- function(params, gamma_min = 0, gamma_max = .1) {
+fit_rzero <- memoise::memoise(function(
+	n_bubble, bubbles_per_class, classes_per_school, pr_meet_class, pr_meet_school,
+	frac_symptomatic, pr_noncovid_symptoms, l, scale, df, lli, gamma_min, gamma_max
+) {
+	get_school <- function(gamma) {
+		julia_call("school",
+			n_bubble, bubbles_per_class, classes_per_school, pr_meet_class, pr_meet_school,
+			gamma,
+			frac_symptomatic, pr_noncovid_symptoms, l, scale, df,
+			Inf, 1, lli, # test specific values do not affect r0
+			julia_call("DoNothing")
+		)
+	}
 	tbl_rzero <- tibble(
 		gamma = seq(gamma_min, gamma_max, length.out = 100),
-			R = map(gamma, ~{
-					params$gamma <- .
-					sample_rzero(do.call(school, params), n = 10L)
-				})
+			R = map(gamma, ~sample_rzero(get_school(.), n = 10L))
 		) %>% 
 		unnest(R)
 	fit <- lm(formula = R ~ gamma - 1, data = tbl_rzero)
 	list(fit = fit, data = tbl_rzero)
-}
-fit_rzero <- memoise::memoise(fit_rzero_)
-rzero <- function(gamma, params, gamma_min = 0, gamma_max = .1) {
-	fit <- fit_rzero(params, gamma_min, gamma_max)$fit
+}, cache = mcache)
+rzero <- memoise::memoise(function(gamma, params) {
+	fit <- with(params, fit_rzero(
+		n_bubble, bubbles_per_class, classes_per_school, pr_meet_class, pr_meet_school,
+		frac_symptomatic, pr_noncovid_symptoms, l, scale, df, lli, gamma_min, gamma_max
+	))$fit
 	as.numeric(predict(fit, newdata = tibble(gamma = gamma), type = "response"))
-}
-gamma <- function(R, params, gamma_min = 0, gamma_max = .1) {
-	as.numeric(uniroot(function(x) rzero(x, params, gamma_min, gamma_max) - R, interval = c(gamma_min, gamma_max))$root)
-}
+}, cache = mcache)
+gamma <- memoise::memoise(function(R, params) {
+	uniroot(
+		function(x) rzero(x, params) - R, 
+		interval = c(params$gamma_min, params$gamma_max)
+	)$root %>% 
+	as.numeric()
+}, cache = mcache)
 
-sample_presymptomatic_vl <- function(params, n = 1e5) {
-	dm <- julia_call("LarremoreModel", params$gamma, frac_symptomatic = params$frac_symptomatic, need_return = "Julia")
-	individuals <- julia_call("Individual.", dm, rep(params$pr_noncovid_symptoms, n), need_return = "Julia")
+sample_presymptomatic_vl <- function(
+	disease_model, 
+	pr_noncovid_symptoms,
+	pcr_lod
+) {
+	individuals <- julia_call("Individual.", 
+			disease_model, 
+			rep(pr_noncovid_symptoms, 1e4), 
+			need_return = "Julia"
+		)
 	julia_call("infect!.", individuals, need_return = "Julia")
 	julia_call("steps!.", individuals, 21L, need_return = "Julia")
+	tbl_u <- tibble(
+		uuid = julia_call("string.",
+				julia_call("getproperty.",  
+					individuals, julia_call("Symbol", "uuid")
+				)
+			),
+		u = julia_call("getproperty.", 
+				individuals, julia_call("Symbol", "u_sensitivity", need_return = "Julia")
+			)
+	)
 	julia_call("get_status_logs", individuals) %>%
 		as_tibble() %>%
+		left_join(tbl_u, by = "uuid") %>% 
 		arrange(uuid, day) %>%
 		group_by(uuid) %>%
 		filter(
-			row_number() >= which(viral_load > params$pcr_lod)[1],
-			row_number() < which(symptomatic)[1]
+			row_number() >= which(viral_load > pcr_lod)[1],
+			row_number() < which(symptomatic)[1] %>% {if_else(is.na(.), Inf, as.numeric(.))}
 		) %>%
 		sample_n(1) %>%
 		ungroup() %>%
-		select(uuid, day, viral_load)
+		select(
+			uuid, 
+			day,
+			u,
+			viral_load
+		)
 }
-sample_presymptomatic_vl_ <- memoise::memoise(sample_presymptomatic_vl)
-mean_sensitivity <- function(params, eta, ...) {
-	sample_presymptomatic_vl_(params, ...) %>%
-	mutate(
-		sensitivity = sensitivity(viral_load^eta, params)
+sample_presymptomatic_vl_ <- memoise::memoise(sample_presymptomatic_vl, cache = mcache)
+mean_sensitivity <- memoise::memoise(function(eta, params) {
+	lfd <- lfd(params, eta = eta)
+	sample_presymptomatic_vl_(
+		disease_model(params, gamma = 0), 
+		params$pr_noncovid_symptoms, 
+		params$pcr_lod
 	) %>%
-	pull(sensitivity) %>%
-	summary() %>%
+	mutate(
+		sensitivity = map2_dbl(viral_load, u,
+				~julia_call("get_probability_positive", lfd, ..1, u = ..2)
+			)
+	) %>% 
+	pull(sensitivity) %>% 
 	mean()
-}
-eta <- function(params, target, ...) {
-	as.numeric(uniroot(function(x) mean_sensitivity(params, x, ...) - target, interval = c(0, 5))$root)
-}
+}, cache = mcache)
+eta <- memoise::memoise(function(target, params) {
+	uniroot(
+		function(x) mean_sensitivity(x, params) - target, 
+		interval = c(0, 3)
+	)$root %>% 
+	as.numeric()
+}, cache = mcache)
 
 expand_scenario <- function(params = scenario(), ...) {
 	tbl <- if (length(list(...)) == 0) {
@@ -163,20 +231,27 @@ evaluate_performance_ <- function(params, policy, n = 1L) {
 			`% schooldays missed (cumulative)` = workdays_missed/n_school(params)/schooldays(params)
 		)
 }
-evaluate_performance <- function(policies, params = scenario(), n = if (!is.null(n_resample)) {n_resample} else {25L}, ...) {
-	gamma2rs <- memoise::memoise(function(gamma) round(rzero(gamma, params), 1) )
-	eta2mean_sensitivity <- memoise::memoise(function(eta) round(mean_sensitivity(params, eta), 2) )
+evaluate_performance_mem <- memoise::memoise(evaluate_performance_, cache = mcache)
+evaluate_performance <- function(
+	policies, 
+	params = scenario(), 
+	.gamma_min = 0.0, .gamma_max = 0.1,
+	n = if (!is.null(n_resample)) {n_resample} else {25L}, 
+	...
+) {
 	expand_scenario(params, ...) %>% 
 		expand_grid(tibble(policy = policies)) %>% 
 		mutate(
 			policy_name = names(policy),
-			results = map2(params, policy, evaluate_performance_, n)
+			results = map2(params, policy, evaluate_performance_mem, n)
 		) %>% 
 		unnest(results) %>% 
-		select(-params) %>% 
 		mutate(
-			policy_name = factor(policy_name, levels = names(lst_policies)),
-			Rs = map_dbl(.data$gamma, gamma2rs),
-			`mean sensitivity` = map_dbl(.data$eta, eta2mean_sensitivity)
-		)
+			policy_name = factor(policy_name, levels = names(lst_policies))
+		) %>%
+		rename(
+			Rs = rzero,
+			`mean sensitivity` = mean_sensitivity
+		) %>% 
+		select(-params)
 }

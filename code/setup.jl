@@ -3,7 +3,7 @@ Pkg.activate(".julia")
 Pkg.instantiate()
 Pkg.precompile()
 
-using cov19sim, DataFrames, Distributions
+@time using cov19sim, DataFrames, Distributions, Random
 
 import Random.seed!
 seed!(42)

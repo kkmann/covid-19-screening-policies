@@ -1,7 +1,7 @@
 get_ar <- function(params, seed = 42L, nrsmpl = 1e4) {
 	julia_call("Random.seed!", as.integer(seed))
 	lfd <- lfd(params)
-	dm <- julia_call("LarremoreModel", params$gamma, frac_symptomatic = params$frac_symptomatic, need_return = "Julia")
+	dm <- julia_call("LarremoreModel", gamma(params$rzero, params), frac_symptomatic = params$frac_symptomatic, need_return = "Julia")
 	individuals <- julia_call("Individual.", dm, rep(params$pr_noncovid_symptoms, nrsmpl), need_return = "Julia")
 	julia_call("infect!.", individuals, need_return = "Julia")
 	for (i in 1:21) {

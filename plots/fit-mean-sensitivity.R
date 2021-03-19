@@ -5,15 +5,20 @@ tbl_innova_data <- tibble(
 		sensitivity = 1 - (c(621, 521, 344, 207, 144, 123) - 114) / (684 - 114)
 	)
 tbl_scenarios <- tibble(
-		`mean sensitivity` = c(mean_sensitivity(scenario(), 1), .4, .6, .8),
-		eta = map_dbl(`mean sensitivity`, ~eta(scenario(), target = .))
+		`mean sensitivity` = c(mean_sensitivity(1, params), .4, .6, .8),
+		eta = map_dbl(`mean sensitivity`, ~eta(., params))
 	)
+
+params$mean_sensitivity <- mean_sensitivity(1, params)
+lfd_test <- lfd(params)
 plt <- tbl_scenarios %>% 
 	expand_grid(
 		`viral load` = 10^seq(0, 11, length.out = 1000),
 	) %>% 
 	mutate(
-		sensitivity = sensitivity(`viral load`^eta, params)
+		sensitivity = map2_dbl(`viral load`, eta,
+				~julia_call("sensitivity.", lfd_test, ..1^..2, need_return = "R")
+			)
 	) %>%
 	ggplot() +
 		aes(`viral load`, sensitivity) +

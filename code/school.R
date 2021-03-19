@@ -1,12 +1,14 @@
 julia_eval('@everywhere include("code/school.jl")')
 
-school <- function(policy = julia_call("DoNothing", need_return = "Julia"), ...){
+school <- function(policy = julia_call("DoNothing", need_return = "Julia"), gamma = NULL, ...){
 	params <- scenario(...)
+	if (is.null(gamma))
+		gamma <- gamma(params$rzero, params)
 	with(params,
 	julia_call("school",
 		n_bubble, bubbles_per_class, classes_per_school, pr_meet_class, pr_meet_school,
 		gamma,
-		frac_symptomatic, pr_noncovid_symptoms,
+		frac_symptomatic, pr_noncovid_symptoms, l, scale, df,
 		a, b,
 		lli,
 		policy

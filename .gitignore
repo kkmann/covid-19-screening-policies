@@ -10,3 +10,5 @@ figures
 *_cache
 *_files
 *.html
+
+.rcache

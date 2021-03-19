@@ -1,18 +1,13 @@
 # boxplots of cumulative infection =============================================
 params_baseline <- scenario()
-params_baseline$gamma <- gamma(3.0, params_baseline)
-params_baseline$eta <- eta(params_baseline, 0.6)
 f <- function(ranef) {
 	params <- params_baseline
 	params$lfd_ranef <- ranef
-	params$eta <- eta(params, 0.6) # random effect might affect calibration of mean test sensitivity
-	print(params$eta)
 	evaluate_performance(
 		# only need test-based policies
 		policies = lst_policies[c("test for release", "Mon screening", "Mon/Wed screening")],
 		params = params,
-		# uneffected by ranef
-		gamma = map_dbl(c(1.5, 3, 6), ~gamma(., params_baseline))
+		rzero = c(1.5, 3, 6)
 	) %>%
 	mutate(
 		`random effect` = sprintf("%.1f", lfd_ranef)
@@ -20,15 +15,6 @@ f <- function(ranef) {
 }
 tbl_results <- bind_rows(
 		f(0), f(1.5)
-	) %>%
-	mutate(
-		# unify Rs values (sampling error)
-		Rs = case_when(
-				abs(Rs - 1.5) <= .5 ~ 1.5,
-				abs(Rs - 3) <= .5 ~ 3,
-				abs(Rs - 6) <= .5 ~ 6
-			) %>% 
-			factor()
 	)
 
 plt_boxplots <- tbl_results %>% 
@@ -118,7 +104,7 @@ plt_sensitivity <- tbl %>%
 		geom_line(aes(group = interaction(uuid, `random effect`)), alpha = 0.1) +
 		geom_smooth(method = "gam", formula = y ~ s(x, bs = "cs"), se = FALSE) +
 		scale_x_continuous("day post infection", breaks = seq(0, 35, by = 7)) +
-		scale_y_continuous("LFD sensitivity", limits = c(0, 1), breaks = seq(0, 1, by = .1), labels = scales::percent) +
+		scale_y_continuous("scaled LFD sensitivity", limits = c(0, 1), breaks = seq(0, 1, by = .1), labels = scales::percent) +
 		scale_color_discrete("random effect:") +
 		guides(color = guide_legend(override.aes = list(alpha = 1) ) ) +
 		theme(
@@ -128,7 +114,5 @@ plt_sensitivity <- tbl %>%
 plt <- plt_viral_load / 
 	(plt_infection_probability + plt_sensitivity) / 
 	plt_boxplots +
-	plot_annotation(tag_levels = "A") +
-	plot_layout(guides = "collect") &
-	theme(legend.position = "top")
+	plot_annotation(tag_levels = "A")
 save_plot(plt, "sensitivity-random-effects", height = 1.5*height)

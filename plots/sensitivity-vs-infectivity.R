@@ -4,7 +4,7 @@ lfd_test <- lfd(params)
 plt <- expand_grid(
 		tibble(
 			`mean sensitivity` = c(.4, .6, .8),
-			eta = map_dbl(`mean sensitivity`, ~eta(params, .))
+			eta = map_dbl(`mean sensitivity`, ~eta(., params))
 		),
 		tibble(
 			Rs = c(1.5, 3, 6),

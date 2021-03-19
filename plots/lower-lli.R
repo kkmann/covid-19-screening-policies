@@ -1,29 +1,19 @@
 params_baseline <- scenario()
-params <- scenario(lli = 1e3)
+params <- scenario(lli = 1e3, gamma_max = 0.06)
 tbl_results <- bind_rows(
 		evaluate_performance(
 			policies = lst_policies,
 			params = params_baseline,
-			gamma = map_dbl(c(1.5, 3, 6), ~gamma(., params_baseline)),
-			eta = eta(params_baseline, target = 0.6)
+			rzero = c(1.5, 3, 6)
 		),
 		evaluate_performance(
 			policies = lst_policies,
 			params = params,
-			gamma = map_dbl(c(1.5, 3, 6), ~gamma(., params, gamma_max = .06)),
-			eta = eta(params, target = 0.6),
-			.gamma_max = 0.06
+			rzero = c(1.5, 3, 6)
 		)
 	) %>%
 	mutate(
-		LLI = factor(lli, levels = c(params_baseline$lli, params$lli)),
-		# unify Rs values (sampling error)
-		Rs = case_when(
-				abs(Rs - 1.5) <= .25 ~ 1.5,
-				abs(Rs - 3) <= .25 ~ 3,
-				abs(Rs - 6) <= .25 ~ 6
-			) %>% 
-			factor()
+		LLI = factor(lli, levels = c(params_baseline$lli, params$lli))
 	)
 
 plt1 <- tbl_results %>% 

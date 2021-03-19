@@ -1,16 +1,13 @@
 # boxplots of cumulative infection =============================================
 scale <- 3/sqrt(3)
 params_baseline <- scenario(scale = 0.0, l = 3, df = 3.0)
-params_baseline$gamma <- gamma(3.0, params_baseline)
-params_baseline$eta <- eta(params_baseline, 0.6)
 f <- function(scale) {
 	params <- params_baseline
 	params$scale <- scale
-	params$eta <- eta(params, 0.6) # random effect might affect calibration of mean test sensitivity
 	evaluate_performance(
 		policies = lst_policies,
 		params = params,
-		gamma = map_dbl(c(1.5, 3, 6), ~gamma(., params))
+		rzero = c(1.5, 3, 6)
 	) %>%
 	mutate(
 		scale = if_else(scale == 0, "default Larremore", "additional VL noise") 
@@ -130,13 +127,12 @@ plt_sensitivity <- tbl_plot %>%
 		geom_line(aes(group = uuid), alpha = 0.2) +
 		# geom_smooth(method = "gam", formula = y ~ s(x, bs = "cs"), se = FALSE) +
 		scale_x_continuous("day post infection", breaks = seq(0, 35, by = 7)) +
-		scale_y_continuous("LFD sensitivity", limits = c(0, 1), breaks = seq(0, 1, by = .1), labels = scales::percent) +
+		scale_y_continuous("scaled LFD sensitivity", limits = c(0, 1), breaks = seq(0, 1, by = .1), labels = scales::percent) +
 		guides(color = guide_legend(override.aes = list(alpha = 1) ) )
 	
 plt <- plt_viral_load / 
 	(plt_infection_probability + plt_sensitivity) / 
 	plt_boxplots +
 	plot_annotation(tag_levels = "A") +
-	plot_layout(guides = "collect") &
-	theme(legend.position = "top")
+	plot_layout(guides = "collect")
 save_plot(plt, "sensitivity-heavy-tails", height = 1.5*height)

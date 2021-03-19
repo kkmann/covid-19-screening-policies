@@ -2,8 +2,8 @@ params <- scenario()
 tbl_results <- evaluate_performance(
 		policies = lst_policies,
 		params = params,
-		gamma = map_dbl(c(1.5, 3, 6), ~gamma(., params)),
-		eta = eta(params, target = 0.6),
+		rzero = c(1.5, 3, 6),
+		mean_sensitivity = c(0.6),
 		frac_symptomatic = c(0.25, 0.5, 0.75)
 	)
 
@@ -89,8 +89,7 @@ plt1 <- tbl_results %>%
 tbl_results2 <- evaluate_performance(
 		policies = lst_policies[c("Mon/Wed screening", "Mon screening", "test for release")],
 		params = params,
-		gamma = map_dbl(c(3), ~gamma(., params)),
-		eta = map_dbl(c(.4, .6, .8), ~eta(params, .)),
+		mean_sensitivity = c(.4, .6, .8),
 		ar_coefficient = c(0, 0.75)
 	)
 plt3 <- tbl_results2 %>%
@@ -125,22 +124,3 @@ plt <- tbl_results2 %>%
 			legend.title = element_text()
 		)
 save_plot(plt, "sensitivity-autocorrelation", width = width, height = .66*height)
-
-
-# plt <- tbl_results %>%
-# 	filter(
-# 		frac_symptomatic == .5
-# 	) %>% 
-# 	ggplot() +
-# 		aes(`% infected (cumulative)`, `% schooldays missed (cumulative)`,  color = policy_name, fill = policy_name) +
-# 		facet_grid(`mean sensitivity` ~ Rs, labeller = label_both) +
-# 		geom_abline(slope = 1) +
-# 		scale_x_continuous(labels = scales::percent, limits = c(0, NA_real_)) +
-# 		scale_y_continuous(labels = scales::percent, limits = c(0, NA_real_)) +
-# 		geom_point(alpha = .33, shape = 16, size = 2) +
-# 		scale_color_discrete(guide = guide_legend(override.aes = list(alpha = 1))) +
-# 		coord_cartesian(expand = FALSE) +
-# 		theme(
-# 			legend.text = element_text(size = rel(1.1))
-# 		)
-# save_plot(plt, "results-schooldays-missed-vs-infectivity", width = width, height = .75*height)

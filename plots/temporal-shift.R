@@ -1,5 +1,4 @@
 params_baseline <- scenario()
-params_baseline$gamma <- gamma(3.0, params_baseline)
 
 # plot trajectories ============================================================
 individuals <- julia_call("Individual.", 
@@ -20,9 +19,9 @@ tbl_u <- tibble(
 		)
 )
 params04 <- params_baseline
-params04$eta <- eta(params04, target = 0.4)
+params04$mean_sensitivity <- 0.4
 params08 <- params_baseline
-params08$eta <- eta(params08, target = 0.8)
+params08$mean_sensitivity <- 0.8
 tbl <- julia_call("get_status_logs", individuals, need_return = "R") %>% 
 	as_tibble() %>% 
 	left_join(tbl_u, by = "uuid") %>% 
@@ -51,7 +50,7 @@ plt_sensitivity <- tbl %>%
 		geom_line(aes(group = interaction(uuid, `mean sensitivity`)), alpha = 0.1) +
 		geom_smooth(method = "gam", formula = y ~ s(x, bs = "cs"), se = FALSE) +
 		scale_x_continuous("day post infection", breaks = seq(0, 35, by = 7)) +
-		scale_y_continuous("LFD sensitivity", limits = c(0, 1), breaks = seq(0, 1, by = .1), labels = scales::percent) +
+		scale_y_continuous("scaled LFD sensitivity", limits = c(0, 1), breaks = seq(0, 1, by = .1), labels = scales::percent) +
 		scale_color_discrete("mean sensitivity:") +
 		guides(color = guide_legend(override.aes = list(alpha = 1) ) ) +
 		theme(

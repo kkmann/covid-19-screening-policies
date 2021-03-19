@@ -13,14 +13,12 @@ tbl_results <- bind_rows(
 	evaluate_performance(
 		policies = lst_policies[c("Mon/Wed screening", "Mon screening", "test for release")],
 		params = scenario(), # standard compliance
-		gamma = map_dbl(c(1.5, 3, 6), ~gamma(., scenario())),
-		eta = map_dbl(c(0.6), ~eta(scenario(), .))
+		rzero = c(1.5, 3, 6)
 	),
 	evaluate_performance(
 		policies = lst_policies,
 		params = params,
-		gamma = map_dbl(c(1.5, 3, 6), ~gamma(., params)),
-		eta = map_dbl(c(0.6), ~eta(params, .))
+		rzero = c(1.5, 3, 6)
 	)
 )
 

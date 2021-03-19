@@ -5,9 +5,11 @@ tbl_innova_data <- tibble(
 		sensitivity = 1 - (c(621, 521, 344, 207, 144, 123) - 114) / (684 - 114)
 	)
 tbl_scenarios <- tibble(
-		`mean sensitivity` = c(mean_sensitivity(params, 1), .4, .6, .8),
-		eta = map_dbl(`mean sensitivity`, ~eta(params, target = .))
+		`mean sensitivity` = c(mean_sensitivity(1, params), .4, .6, .8),
+		eta = map_dbl(`mean sensitivity`, ~eta(., params))
 	)
+
+params$mean_sensitivity <- mean_sensitivity(1, params)
 lfd_test <- lfd(params)
 plt <- tbl_scenarios %>% 
 	expand_grid(

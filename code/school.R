@@ -1,7 +1,9 @@
 julia_eval('@everywhere include("code/school.jl")')
 
-school <- function(policy = julia_call("DoNothing", need_return = "Julia"), ...){
+school <- function(policy = julia_call("DoNothing", need_return = "Julia"), gamma = NULL, ...){
 	params <- scenario(...)
+	if (is.null(gamma))
+		gamma <- gamma(params$rzero, params)
 	with(params,
 	julia_call("school",
 		n_bubble, bubbles_per_class, classes_per_school, pr_meet_class, pr_meet_school,

@@ -27,8 +27,7 @@ plt_boxplots <- tbl_results %>%
 		theme(
 			axis.text.x = element_text(angle = 33, hjust = 1),
 			axis.title.x = element_blank(),
-			legend.position = "top",
-			legend.title = element_text()
+			legend.position = "none"
 		)
 
 # plot trajectories ============================================================
@@ -114,5 +113,6 @@ plt_sensitivity <- tbl %>%
 plt <- plt_viral_load / 
 	(plt_infection_probability + plt_sensitivity) / 
 	plt_boxplots +
-	plot_annotation(tag_levels = "A")
+	plot_annotation(tag_levels = "A") +
+	plot_layout(guides = "collect")
 save_plot(plt, "sensitivity-random-effects", height = 1.5*height)

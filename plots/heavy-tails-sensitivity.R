@@ -57,8 +57,6 @@ tbl_baseline <- julia_call("get_status_logs", individuals, need_return = "R") %>
 	)
 params <- params_baseline
 params$scale <- scale
-params$gamma <- gamma(3.0, params)
-params$eta <- eta(params, 0.6)
 individuals <- julia_call("Individual.", 
 	disease_model(params), 
 	rep(params_baseline$pr_noncovid_symptoms, 100), 

@@ -4,86 +4,67 @@ library(tidygraph)
 library(ggraph)
 library(patchwork)
 
-width <- 8
+width <- 4.2126 # 107 mm
+doublecolwidth <- 6.1 # measured from LPH file
 height <- width/1.5
 
 n_resample <- 250L
 
-mcache <- cachem::cache_mem(max_size = 1024^3)
+mcache <- cachem::cache_disk("_site/.cachem", max_size = 5*1024^3)
 
 JuliaCall::julia_setup(force = TRUE)
 JuliaCall::julia_source("code/setup.jl")
-walk(list.files("code", pattern = "*.R", full.names = TRUE), source)
+
+source("code/util.R")
+source("code/scenario.R")
+source("code/school.R")
+
 
 # define policies --------------------------------------------------------------
-pcr_turnaround <- 2L
-isolation_duration <- 10L
-lst_policies <- list(
-	reference = function(params) julia_call("SymptomaticIsolation",
-			lfd(params), pcr_test = pcr(params),
-			pcr_turnaround = pcr_turnaround, isolation_duration = isolation_duration,
-			need_return = "Julia"
-		),
-	`test for release` = function(params) julia_call("DynamicScreening",
-			lfd(params), pcr_test = pcr(params),
-			pcr_turnaround = pcr_turnaround, isolation_duration = isolation_duration,
-			followup_duration = 7L,
-			need_return = "Julia"
-		),
-	`Thu/Fri off` = function(params) julia_call("SymptomaticIsolation",
-			lfd(params), pcr_test = pcr(params),
-			pcr_turnaround = pcr_turnaround, isolation_duration = isolation_duration,
-			fixed_isolation_weekdays = as.integer(c(3, 4)),
-			need_return = "Julia"
-		),
-	`Mon screening` = function(params) julia_call("SymptomaticIsolation",
-			lfd(params), pcr_test = pcr(params),
-			pcr_turnaround = pcr_turnaround, isolation_duration = isolation_duration,
-			screening_test_weekdays = julia_eval("[0]", need_return = "Julia"),
-			need_return = "Julia"
-		),
-	`Mon/Wed screening` = function(params) julia_call("SymptomaticIsolation",
-			lfd(params), pcr_test = pcr(params),
-			pcr_turnaround = pcr_turnaround, isolation_duration = isolation_duration,
-			screening_test_weekdays = as.integer(c(0, 2)),
-			need_return = "Julia"
-		)
-)
+source("code/define-policies.R")
 
-# calibrate-infectivity (standard case) ----------------------------------------
-source("plots/population-structure.R")
 
-# calibrate-infectivity (standard case) ----------------------------------------
-source("plots/calibration-infectivity.R")
+# fig2: plot viral load sample trajectories ------------------------------------
+source("code/plots/fig2-vl-trajectories.R")
 
-# plot viral load sample trajectories ------------------------------------------
-source("plots/vl-trajectories.R")
-source("plots/vl-trajectories-heavy-tails.R")
+# fig3: main results -----------------------------------------------------------
+source("code/plots/fig3-main-results.R")
 
-# recalibrate innova lfd mean sensitivity --------------------------------------
-source("plots/fit-mean-sensitivity.R")
+# fig4 test sensitivity & symptom fraction -------------------------------------
+source("code/plots/fig4-lfd-sensitivity-and-symptomatic-fraction.R")
 
-# plot autocorrelation ---------------------------------------------------------
-source("plots/autocorrelation.R")
+# fig5: only one bubble per class ----------------------------------------------
+source("code/plots/fig5-three-vs-one-bubble.R")
 
-# plot sensitivity vs infection probability ------------------------------------
-source("plots/sensitivity-vs-infectivity.R")
-source("plots/temporal-shift.R")
+# fig6: less LFD compliance ----------------------------------------------------
+source("code/plots/fig6-lower-lfd-compliance.R")
 
-# main results, base scenario --------------------------------------------------
-source("plots/main-results.R")
+# figA1: contact matrices ------------------------------------------------------
+source("code/plots/figA1-population-structure.R")
 
-# only one bubble per class ----------------------------------------------------
-source("plots/only-one-bubble.R")
+# figA2: calibrate-infectivity -------------------------------------------------
+source("code/plots/figA2-calibration-infectivity.R")
 
-# less compliance --------------------------------------------------------------
-source("plots/lower-lfd-compliance.R")
+# figA3.1: recalibrate innova lfd mean sensitivity -----------------------------
+source("code/plots/figA31-fit-mean-sensitivity.R")
 
-# lower limit of infectivity ---------------------------------------------------
-source("plots/lower-lli.R")
+# figA3.2: plot sensitivity vs infection probability ---------------------------
+source("code/plots/figA32-sensitivity-vs-infectivity.R")
 
-# heavy tails ------------------------------------------------------------------
-source("plots/heavy-tails-sensitivity.R")
+# figA3.3: plot sensitivity vs infection probability ---------------------------
+source("code/plots/figA33-temporal-shift.R")
 
-# random effects ---------------------------------------------------------------
-source("plots/random-effect-sensitivity.R")
+# fig A5.1: plot autocorrelation -----------------------------------------------
+source("code/plots/figA51-autocorrelation.R")
+
+# fig A5.2: results autocorrelation --------------------------------------------
+source("code/plots/figA52-sensitivity-autocorrelation.R")
+
+# fig A6: lower limit of infectivity -------------------------------------------
+source("code/plots/figA6-lower-lli.R")
+
+# fig A7: heavy tails ----------------------------------------------------------
+source("code/plots/figA7-sensitivity-heavy-tails.R")
+
+# fig A8: random effects -------------------------------------------------------
+source("code/plots/figA8-sensitivity-random-effect.R")

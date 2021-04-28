@@ -55,11 +55,10 @@ plt <- tibble(
 	ggplot() +
 		aes(lag, mid, color = coefficient) +
 		geom_line(aes(y = mid)) + 
-		scale_color_grey("") +
+		scale_color_grey("a") +
 		ylab("autocorrelation") +
 		scale_x_continuous("lag [days]", breaks = seq(0, 21, by = 1)) +
 		theme(
-			legend.position = "right"
+			legend.position = "top"
 		)
-
-save_plot(plt, "retest-autocorrelation", width = width, height = height/2)
+save_plot(plt, "figA51-autocorrelation", width = width, height = height)

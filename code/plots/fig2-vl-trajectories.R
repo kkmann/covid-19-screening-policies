@@ -5,7 +5,7 @@ dm <- julia_call("LarremoreModel",
 	l10vl_clearance = log10(params$lli),
 	need_return = "Julia"
 )
-individuals <- julia_call("Individual.", dm, rep(params$pr_noncovid_symptoms, 32), need_return = "Julia")
+individuals <- julia_call("Individual.", dm, rep(params$pr_noncovid_symptoms, 20), need_return = "Julia")
 julia_call("infect!.", individuals, need_return = "Julia")
 julia_call("steps!.", individuals, 21L, need_return = "Julia")
 
@@ -22,10 +22,10 @@ plt <- julia_call("get_status_logs", individuals, need_return = "R") %>%
 		scale_x_continuous("day post infection", breaks = seq(0, 35, by = 7)) +
 		scale_fill_manual(breaks = c("non-symptomatic", "symptomatic"), values = c("darkgray", "black")) +
 		ylab("viral load") +
-		facet_wrap(~uuid, nrow = 4) +
+		facet_wrap(~uuid, ncol = 4) +
 		theme(
 			strip.text = element_blank(),
 			strip.background = element_blank(),
 			panel.spacing = unit(.25, "lines")
 		)
-save_plot(plt, "vl-trajectories", height = .8*height)
+save_plot(plt, "fig2-vl-trajectories", width = width, height = 2*height)

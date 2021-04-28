@@ -17,6 +17,6 @@ addprocs(Sys.CPU_THREADS) # memory limitations...
 	Pkg.activate(".julia")
 	using cov19sim, DataFrames, Distributions, Random
 	Random.seed!(myid())
-	include("code/school.jl")
-	include("code/evaluate_performance.jl")
+	include("school.jl")
+	include("evaluate_performance.jl")
 end

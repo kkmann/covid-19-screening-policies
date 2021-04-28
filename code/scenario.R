@@ -146,7 +146,7 @@ sample_presymptomatic_vl <- function(
 			need_return = "Julia"
 		)
 	julia_call("infect!.", individuals, need_return = "Julia")
-	julia_call("steps!.", individuals, 21L, need_return = "Julia")
+	julia_call("steps!.", individuals, 15L, need_return = "Julia")
 	tbl_u <- tibble(
 		uuid = julia_call("string.",
 				julia_call("getproperty.",  
@@ -163,13 +163,13 @@ sample_presymptomatic_vl <- function(
 		arrange(uuid, day) %>%
 		group_by(uuid) %>%
 		filter(
-			row_number() >= which(viral_load > pcr_lod)[1],
+			viral_load > pcr_lod,
 			row_number() < which(symptomatic)[1] %>% {if_else(is.na(.), Inf, as.numeric(.))}
 		) %>%
 		sample_n(1) %>%
 		ungroup() %>%
 		select(
-			uuid, 
+			uuid,
 			day,
 			u,
 			viral_load

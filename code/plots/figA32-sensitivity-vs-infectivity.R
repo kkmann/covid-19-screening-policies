@@ -34,5 +34,8 @@ plt <- expand_grid(
 			y = "scaled LFD sensitivity",
 			x = "probability to infect during risk contact"
 		) +
-		theme(legend.title = element_text())
-save_plot(plt, "sensitivity-vs-infectivity", width = width, height = 1.5*height)
+		theme(
+			legend.title = element_text(),
+			axis.text.x = element_text(angle = 45, hjust = 1)
+		)
+save_plot(plt, "figA32-sensitivity-vs-infectivity", width = width, height = 2.1*height)

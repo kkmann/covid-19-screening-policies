@@ -6,7 +6,7 @@ f <- function(params) with(params, fit_rzero(
 params1 <- scenario()
 plt1 <- ggplot(f(params1)$data) +
 	aes(gamma, R) +
-	geom_point(alpha = 0.2, shape = 16) +
+	geom_point(alpha = 0.2, shape = 16, size = .5) +
 	geom_line(
 		data = tibble(
 			gamma = seq(0, .1, length.out = 100),
@@ -19,11 +19,14 @@ plt1 <- ggplot(f(params1)$data) +
 		y = "",
 		x = expression(gamma),
 		title = "LLI = 1e6"
+	) +
+	theme(
+		axis.text.x = element_text(angle = 30, hjust = 1)
 	)
 params2 <- scenario(lli = 1e3, gamma_max = 0.06)
 plt2 <- ggplot(f(params2)$data) +
 	aes(gamma, R) +
-	geom_point(alpha = 0.2, shape = 16) +
+	geom_point(alpha = 0.2, shape = 16, size = .5) +
 	geom_line(
 		data = tibble(
 			gamma = seq(0, .06, length.out = 100),
@@ -36,11 +39,14 @@ plt2 <- ggplot(f(params2)$data) +
 		y = "",
 		x = expression(gamma),
 		title = "LLI = 1e3"
+	) +
+	theme(
+		axis.text.x = element_text(angle = 30, hjust = 1)
 	)
 params3 <- scenario(scale = 3/sqrt(3), l = 3, df = 3)
 plt3 <- ggplot(f(params3)$data) +
 	aes(gamma, R) +
-	geom_point(alpha = 0.2, shape = 16) +
+	geom_point(alpha = 0.2, shape = 16, size = .5) +
 	geom_line(
 		data = tibble(
 			gamma = seq(0, .1, length.out = 100),
@@ -53,6 +59,9 @@ plt3 <- ggplot(f(params3)$data) +
 		y = "",
 		x = expression(gamma),
 		title = "Heavy Tails"
+	) +
+	theme(
+		axis.text.x = element_text(angle = 30, hjust = 1)
 	)
 plt <- plt1 + plt2 + plt3
-save_plot(plt, "calibrating-infectivity", width = width, height = .66*height)
+save_plot(plt, "figA2-calibrating-infectivity", width = doublecolwidth, height = .66*height)

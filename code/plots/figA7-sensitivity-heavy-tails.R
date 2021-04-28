@@ -18,7 +18,7 @@ tbl_results <- bind_rows(f(0), f(scale))
 plt_boxplots <- tbl_results %>% 
 	ggplot() +
 		aes(policy_name, `% infected (cumulative)`, color = scale) +
-		geom_boxplot() +
+		geom_boxplot(size = .33) +
 		scale_y_continuous(labels = scales::percent, limits = c(0, NA_real_)) +
 		facet_wrap(~Rs, labeller = label_both, nrow = 1) + 
 		theme(
@@ -133,4 +133,4 @@ plt <- plt_viral_load /
 	plt_boxplots +
 	plot_annotation(tag_levels = "A") +
 	plot_layout(guides = "collect")
-save_plot(plt, "sensitivity-heavy-tails", height = 1.5*height)
+save_plot(plt, "figA7-sensitivity-heavy-tails", width = doublecolwidth, height = 3*height)

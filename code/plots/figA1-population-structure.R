@@ -35,4 +35,4 @@ plt2 <- do.call(school, scenario(n_bubble = 27, bubbles_per_class = 1)) %>%
 		) +
 		labs(title = "one bubble per class")
 plt <- plt1 + plt2 + plot_layout(guides = "collect") & theme(legend.position = "right")
-save_plot(plt, "adjacency-matrices", width = width, height = .66*height)
+save_plot(plt, "figA1-adjacency-matrices", width = doublecolwidth, height = height)

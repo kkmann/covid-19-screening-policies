@@ -20,7 +20,7 @@ tbl_results <- bind_rows(
 plt_boxplots <- tbl_results %>% 
 	ggplot() +
 		aes(policy_name, `% infected (cumulative)`, color = `random effect`) +
-		geom_boxplot() +
+		geom_boxplot(size = .33) +
 		scale_y_continuous(labels = scales::percent, limits = c(0, NA_real_)) +
 		scale_color_discrete("random effect:") +
 		facet_wrap(~Rs, labeller = label_both, nrow = 1) + 
@@ -115,4 +115,4 @@ plt <- plt_viral_load /
 	plt_boxplots +
 	plot_annotation(tag_levels = "A") +
 	plot_layout(guides = "collect")
-save_plot(plt, "sensitivity-random-effects", height = 1.5*height)
+save_plot(plt, "figA8-sensitivity-random-effects", width = doublecolwidth, height = 3*height)

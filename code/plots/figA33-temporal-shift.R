@@ -56,4 +56,4 @@ plt_sensitivity <- tbl %>%
 		theme(
 			legend.title = element_text()
 		)
-save_plot(plt_sensitivity, "temporal-impact-of-sensitivity", height = .66*height)
+save_plot(plt_sensitivity, "figA33-temporal-impact-of-sensitivity", width = width, height = height)

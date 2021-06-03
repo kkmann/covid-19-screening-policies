@@ -1,46 +1,59 @@
 scenario <- function(
-	n_bubble = 9L,
-	bubbles_per_class = 3L,
-	classes_per_school = 12L,
-	expected_class_contacts = 3,
-	expected_school_contacts = 1,
-	frac_symptomatic = 0.5,
-	pr_noncovid_symptoms = 0.01,
-	expected_weekly_external_infections = 1,
-	a = Inf,
-	b = 1,
-	lli = 1e6,
-	pcr_lod = 300.0,
-	pcr_sens = .975,
-	pcr_spec = 1.0,
-	lfd_spec = 0.998,
-	lfd_ranef = 0.0,
-	ar_window = 3L,
-	ar_coefficient = 0.0,
-	days = as.integer(6*7),
-	scale = 0.0,
-	l = 2.5,
-	df = 3.0,
-	gamma_min = 0.0, gamma_max = 0.1,
-	rzero = 3.0,
-	mean_sensitivity = 0.6,
+	params = NULL,
 	...
 ) {
-	res <- 	as.list(environment())
-
-	res$pr_meet_class <- expected_class_contacts/(n_class(res) - 1)
-	res$expected_class_contacts <- NULL
-	res$pr_meet_school <- expected_school_contacts/(n_school(res) - 1)
-	res$expected_school_contacts <- NULL
-	res$pr_external_infection <- max(0, min(1, expected_weekly_external_infections / n_school(res) / 7))
-	res$expected_weekly_external_infections <- NULL
+	# need to be able to change existing params
+	res <- if (!is.null(params)) {
+		params
+	} else {
+		list(
+			n_bubble = 9L,
+			bubbles_per_class = 3L,
+			classes_per_school = 12L,
+			expected_class_contacts = 3,
+			expected_school_contacts = 1,
+			frac_symptomatic = 0.5,
+			pr_noncovid_symptoms = 0.01,
+			expected_weekly_external_infections = 2,
+			a = Inf,
+			b = 1,
+			lli = 1e6,
+			pcr_lod = 300.0,
+			pcr_sens = .975,
+			pcr_spec = 1.0,
+			lfd_spec = 0.998,
+			lfd_ranef = 0.0,
+			ar_window = 3L,
+			ar_coefficient = 0.0,
+			days = as.integer(6*7),
+			scale = 0.0,
+			l = 2.5,
+			df = 3.0,
+			gamma_min = 0.0, gamma_max = 0.1,
+			rzero = 3.0,
+			mean_sensitivity = 0.6
+		)
+	}
+	
+	args <- list(...)
+	if (length(args) > 0) {
+		for (i in 1:length(args)) {
+			name <- names(args)[i]
+			value <- args[[i]]
+			res[[name]] <- value
+		}
+	}
+	
+	res$pr_meet_class <- res$expected_class_contacts/(n_class(res) - 1)
+	res$pr_meet_school <- res$expected_school_contacts/(n_school(res) - 1)
+	res$pr_external_infection <- max(0, min(1, res$expected_weekly_external_infections / n_school(res) / 7))
 	
 	tbl_innova_data <- tibble(
 		`viral load` = 10^(2:7),
 		sensitivity = 1 - (c(621, 521, 344, 207, 144, 123) - 114) / (684 - 114)
 	)
 	sensitivity <- function(vl, slope, intercept) {
-		lfd <- julia_call("LogRegTest", "lfd", slope, intercept, lfd_spec, need_return = "Julia")
+		lfd <- julia_call("LogRegTest", "lfd", slope, intercept, res$lfd_spec, need_return = "Julia")
 		julia_call("sensitivity.", lfd, vl, need_return = "R")
 	}
 	innova <- optim(
@@ -203,22 +216,23 @@ expand_scenario <- function(params = scenario(), ...) {
 	tbl <- if (length(list(...)) == 0) {
 		as_tibble(params)
 	} else {
-		for (name in names(list(...))) {
-			params[[name]] <- NULL
-		}
-		expand_grid(do.call(expand_grid, list(...)), as_tibble(params))
+		# expand additional parameters to tibble and apply scenario() to each combination
+		do.call(expand_grid, list(...)) %>%
+			mutate(
+				id = row_number(), 
+				across(-id, as.list)
+			) %>% 
+			pivot_longer(-id) %>% 
+			group_by(id) %>% 
+			summarize(
+				nonstandard_params = {res <- value; names(res) <- name; list(res)}
+			) %>%
+			transmute(
+				params = map(nonstandard_params, ~as_tibble(do.call(scenario, c(list(params = params), .))))
+			) %>%
+			unnest(params)
 	}
-	tbl %>% 
-		group_by(row_number()) %>% 
-		nest() %>% 
-		mutate(data = map(data, as.list)) %>% 
-		pull(data) %>% 
-		enframe(value = "params") %>% 
-		select(params) %>% 
-		mutate(
-			tmp = map(params, ~as_tibble(.))
-		) %>% 
-		unnest(tmp)
+	return(tbl)
 }
 
 julia_eval('@everywhere include("code/evaluate_performance.jl")')
@@ -240,12 +254,17 @@ evaluate_performance <- function(
 	...
 ) {
 	expand_scenario(params, ...) %>% 
+		rowwise() %>% group_split() %>% 
+		map(as.list) %>% 
+		enframe(name = NULL, value = "params") %>%
 		expand_grid(tibble(policy = policies)) %>% 
 		mutate(
 			policy_name = names(policy),
 			results = map2(params, policy, evaluate_performance_mem, n)
 		) %>% 
 		unnest(results) %>% 
+		mutate(params = map(params, as_tibble)) %>% 
+		unnest(params) %>%
 		mutate(
 			policy_name = factor(policy_name, levels = names(lst_policies))
 		) %>%
@@ -253,5 +272,5 @@ evaluate_performance <- function(
 			Rs = rzero,
 			`mean sensitivity` = mean_sensitivity
 		) %>% 
-		select(-params)
+		select(-policy)
 }

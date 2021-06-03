@@ -1,20 +1,14 @@
 # boxplots of cumulative infection =============================================
 params_baseline <- scenario()
-f <- function(ranef) {
-	params <- params_baseline
-	params$lfd_ranef <- ranef
-	evaluate_performance(
-		# only need test-based policies
+tbl_results <- evaluate_performance(
 		policies = lst_policies[c("test for release", "Mon screening", "Mon/Wed screening")],
-		params = params,
-		rzero = c(1.5, 3, 6)
+		params = params_baseline,
+		rzero = c(1.5, 3, 6),
+		mean_sensitivity = c(0.6),
+		lfd_ranef = c(0, 1.5)
 	) %>%
 	mutate(
 		`random effect` = sprintf("%.1f", lfd_ranef)
-	)
-}
-tbl_results <- bind_rows(
-		f(0), f(1.5)
 	)
 
 plt_boxplots <- tbl_results %>% 

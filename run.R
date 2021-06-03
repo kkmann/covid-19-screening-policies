@@ -68,3 +68,6 @@ source("code/plots/figA7-sensitivity-heavy-tails.R")
 
 # fig A8: random effects -------------------------------------------------------
 source("code/plots/figA8-sensitivity-random-effect.R")
+
+# fig A9: ext. infection rate --------------------------------------------------
+source("code/plots/figA9-external-infections.R")

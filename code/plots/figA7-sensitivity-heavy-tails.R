@@ -1,19 +1,15 @@
 # boxplots of cumulative infection =============================================
 scale <- 3/sqrt(3)
 params_baseline <- scenario(scale = 0.0, l = 3, df = 3.0)
-f <- function(scale) {
-	params <- params_baseline
-	params$scale <- scale
-	evaluate_performance(
+tbl_results <- evaluate_performance(
 		policies = lst_policies,
-		params = params,
-		rzero = c(1.5, 3, 6)
+		params = params_baseline,
+		rzero = c(1.5, 3, 6),
+		scale = c(0, scale)
 	) %>%
 	mutate(
 		scale = if_else(scale == 0, "default Larremore", "additional VL noise") 
 	)
-}
-tbl_results <- bind_rows(f(0), f(scale))
 
 plt_boxplots <- tbl_results %>% 
 	ggplot() +
